@@ -23,16 +23,36 @@ for entry in mesh_dict:
         rule = SimstringMatcherRule.from_dict({
             "term": entry["term"],
             "label": "medical_entity",
+            "case_sensitive": False,
+            "unicode_sensitive": False,
             "normalizations": [
                 {
                     "kb_name": "MeSH",
-                    "kb_id": entry["id"]
+                    "kb_id": entry["id"],
+                    "kb_version": None,  # Ajouté pour éviter l’erreur
+                    "term": None
                 }
             ]
         })
         rules.append(rule)
 
-matcher = SimstringMatcher(rules=rules, threshold=0.85)
+simstring_db_path = Path("simstring_mesh.db")
+rules_db_path = Path("rules_mesh.db")
+
+build_simstring_matcher_databases(
+    simstring_db_file=simstring_db_path,
+    rules_db_file=rules_db_path,
+    rules=rules
+)
+
+
+matcher = SimstringMatcher(
+    simstring_db_file=simstring_db_path,
+    rules_db_file=rules_db_path,
+    threshold=0.85,
+    similarity="jaccard"
+)
+
 
 # --- 4. Pipeline : GLiNER → SimStringMatcher (via Medkit)
 for i, ex in enumerate(cas_cliniques[:5]):  # ⚠️ Limité à 5 pour test
