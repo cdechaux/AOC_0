@@ -3,6 +3,7 @@ from gliner import GLiNER
 from medkit.core.text import TextDocument
 from medkit.text.ner import SimstringMatcher, SimstringMatcherRule
 import json
+from pathlib import Path
 
 # --- 1. Charger les données (cas cliniques)
 dataset = load_dataset("rntc/edu3-clinical-fr", split="train")
@@ -18,8 +19,13 @@ with open("mesh_dict.json", encoding="utf-8") as f:
 
 # --- 3 bis. Creer des rules à partir du dictionnaire
 rules = []
+
 for entry in mesh_dict:
-    if entry["term"].strip():
+    if (
+        isinstance(entry, dict)
+        and entry.get("term", "").strip()
+        and "id" in entry
+    ):
         rule = SimstringMatcherRule.from_dict({
             "term": entry["term"],
             "label": "medical_entity",
@@ -28,27 +34,21 @@ for entry in mesh_dict:
             "normalizations": [
                 {
                     "kb_name": "MeSH",
-                    "kb_id": entry["id"],
-                    "kb_version": None,  # Ajouté pour éviter l’erreur
+                    "id": entry["id"],           # ✅ bien 'id'
+                    "kb_version": None,
                     "term": None
                 }
             ]
         })
         rules.append(rule)
+    else:
+        print("⚠️ Ignored entry:", entry)
 
-simstring_db_path = Path("simstring_mesh.db")
-rules_db_path = Path("rules_mesh.db")
 
-build_simstring_matcher_databases(
-    simstring_db_file=simstring_db_path,
-    rules_db_file=rules_db_path,
-    rules=rules
-)
 
 
 matcher = SimstringMatcher(
-    simstring_db_file=simstring_db_path,
-    rules_db_file=rules_db_path,
+    rules=rules,
     threshold=0.85,
     similarity="jaccard"
 )
@@ -64,8 +64,8 @@ for i, ex in enumerate(cas_cliniques[:5]):  # ⚠️ Limité à 5 pour test
     for ent in entities:
         ent_text = text[ent["start"]:ent["end"]]
         # Créer un faux document Medkit avec 1 annotation (nécessaire pour SimStringMatcher)
-        doc = TextDocument(text=ent_text, id=f"ent_{i}_{ent_text}")
-        ann = doc.anns.new_label(label=ent["label"], span=(0, len(ent_text)), text=ent_text)
+        doc = TextDocument(text=ent_text, uid=f"ent_{i}_{ent_text}")
+        ann = doc.anns.new_segment(label=ent["label"], span=(0, len(ent_text)), text=ent_text)
         match = matcher.run([ann])
 
         print(f" - {ent['label']} → « {ent_text} » → {match[0].data['id'] if match else '—'}")
