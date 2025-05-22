@@ -1,36 +1,51 @@
 from datasets import load_dataset
-from medkit.text.ner import GLiNER
-from medkit.text.link import SimStringMatcher
+from gliner import GLiNER
 from medkit.core.text import TextDocument
+from medkit.text.ner import SimstringMatcher, SimstringMatcherRule
 import json
 
-# --- Étape 1 : Charger les cas cliniques depuis Hugging Face
+# --- 1. Charger les données (cas cliniques)
 dataset = load_dataset("rntc/edu3-clinical-fr", split="train")
 cas_cliniques = [ex for ex in dataset if ex["document_type"] == "Clinical case"]
 
-# --- Étape 2 : Initialiser GLiNER Biomed
-ner = GLiNER(model="BMDKL/GLiNER-biomedical", device="cpu")  # utilise "cuda" si GPU dispo
+# --- 2. Initialiser GLiNER Biomed
+gliner_model = GLiNER.from_pretrained("Ihor/gliner-biomed-large-v1.0", device="cuda")
+labels = ["disease", "condition", "symptom", "treatment"]
 
-# --- Étape 3 : Charger le dictionnaire MeSH (JSON formaté type SimString)
+# --- 3. Charger dictionnaire MeSH JSON
 with open("mesh_dict.json", encoding="utf-8") as f:
     mesh_dict = json.load(f)
 
-linker = SimStringMatcher(dict_entries=mesh_dict, threshold=0.85)
-rint("ok")
-# --- Étape 4 : Traitement des textes
-for i, ex in enumerate(cas_cliniques[:10]):  # limite à 10 pour test
+# --- 3 bis. Creer des rules à partir du dictionnaire
+rules = []
+for entry in mesh_dict:
+    if entry["term"].strip():
+        rule = SimstringMatcherRule.from_dict({
+            "term": entry["term"],
+            "label": "medical_entity",
+            "normalizations": [
+                {
+                    "kb_name": "MeSH",
+                    "kb_id": entry["id"]
+                }
+            ]
+        })
+        rules.append(rule)
+
+matcher = SimstringMatcher(rules=rules, threshold=0.85)
+
+# --- 4. Pipeline : GLiNER → SimStringMatcher (via Medkit)
+for i, ex in enumerate(cas_cliniques[:5]):  # ⚠️ Limité à 5 pour test
     text = ex["article_text"]
-    doc = TextDocument(text=text, id=f"doc_{i}")
+    print(f"\n=== Cas clinique #{i + 1} ===\nTexte: {text[:200]}...")
 
-    # NER : extraction d'entités
-    ents = ner.run([doc])
-    doc.anns.ner_anns = ents
+    entities = gliner_model.predict_entities(text, labels)
 
-    # Linking : associer les entités à MeSH
-    links = linker.run(ents)
+    for ent in entities:
+        ent_text = text[ent["start"]:ent["end"]]
+        # Créer un faux document Medkit avec 1 annotation (nécessaire pour SimStringMatcher)
+        doc = TextDocument(text=ent_text, id=f"ent_{i}_{ent_text}")
+        ann = doc.anns.new_label(label=ent["label"], span=(0, len(ent_text)), text=ent_text)
+        match = matcher.run([ann])
 
-    print(f"\n=== Cas clinique #{i + 1} ===")
-    print(f"Texte : {text[:200]}...")  # aperçu
-    for ent, match in zip(ents, links):
-        print(f" - {ent.label} : '{ent.text}' → {match[0].data['id'] if match else '—'}")
-
+        print(f" - {ent['label']} → « {ent_text} » → {match[0].data['id'] if match else '—'}")
