@@ -1,36 +1,44 @@
 import xml.etree.ElementTree as ET
 import json
+from pathlib import Path
 
-INPUT_FILE = "desc2025.xml"
+INPUT_FILE  = Path("fredesc2023.xml")     # vérifiez le nom !
 OUTPUT_FILE = "mesh_dict.json"
+
+# 1) Namespace MeSH
+NS = {"m": "http://www.nlm.nih.gov/mesh"}
 
 mesh_terms = []
 
-# Parse XML de manière efficace (streaming)
+# 2) Parcours « streaming » + libération mémoire
 for event, elem in ET.iterparse(INPUT_FILE, events=("end",)):
-    if elem.tag == "DescriptorRecord":
-        mesh_id = elem.findtext("DescriptorUI")
-        main_term = elem.find("DescriptorName/String").text.strip()
+    # Retirer le namespace de la balise courante
+    tag = elem.tag.split("}")[-1]
 
-        # Ensemble de termes (libellé principal + synonymes)
+    if tag == "DescriptorRecord":
+        mesh_id = elem.findtext("m:DescriptorUI", namespaces=NS)
+
+        main_node = elem.find("m:DescriptorName/m:String", namespaces=NS)
+        if mesh_id is None or main_node is None:
+            # Certains enregistrements incomplets : on ignore
+            elem.clear()
+            continue
+
+        main_term = main_node.text.strip()
         term_set = {main_term}
 
-        # Aller chercher les entry terms dans TermList
-        for term in elem.findall(".//ConceptList/Concept/TermList/Term/String"):
+        # Tous les synonymes (TermList)
+        for term in elem.findall(".//m:TermList/m:Term/m:String", namespaces=NS):
             if term.text:
                 term_set.add(term.text.strip())
 
-        # Ajouter chaque terme comme entrée indépendante
+        # Ajout dans la liste finale
         for term in sorted(term_set):
-            mesh_terms.append({
-                "term": term,
-                "id": mesh_id
-            })
+            mesh_terms.append({"term": term, "id": mesh_id})
 
-        # Libérer la mémoire
-        elem.clear()
+        elem.clear()          # libère la RAM
 
-# Sauvegarde JSON
+# 3) Sauvegarde JSON utf-8
 with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
     json.dump(mesh_terms, f, ensure_ascii=False, indent=2)
 
