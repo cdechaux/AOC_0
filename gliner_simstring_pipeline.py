@@ -1,6 +1,6 @@
 from datasets import load_dataset
 from gliner import GLiNER
-from medkit.core.text import TextDocument
+from medkit.core.text import TextDocument, Segment, Span 
 from medkit.text.ner import SimstringMatcher, SimstringMatcherRule
 import json
 from pathlib import Path
@@ -63,9 +63,30 @@ for i, ex in enumerate(cas_cliniques[:5]):  # ⚠️ Limité à 5 pour test
 
     for ent in entities:
         ent_text = text[ent["start"]:ent["end"]]
-        # Créer un faux document Medkit avec 1 annotation (nécessaire pour SimStringMatcher)
-        doc = TextDocument(text=ent_text, uid=f"ent_{i}_{ent_text}")
-        ann = doc.anns.new_segment(label=ent["label"], span=(0, len(ent_text)), text=ent_text)
-        match = matcher.run([ann])
 
-        print(f" - {ent['label']} → « {ent_text} » → {match[0].data['id'] if match else '—'}")
+        # 1) document “bidon” (facultatif si vous ne l’utilisez pas ensuite)
+        doc = TextDocument(text=ent_text, uid=f"ent_{i}")
+
+        # 2) construire le Segment
+        seg = Segment(
+            label=ent["label"],
+            spans=[Span(0, len(ent_text))],  # positions dans le (sous-)texte
+            text=ent_text,
+        )
+
+        # 3) l’enregistrer dans le conteneur d’annotations
+        doc.anns.add(seg)
+
+        # 4) passer ce Segment au SimstringMatcher
+        matches = matcher.run([seg])
+
+        if matches:
+            mesh_ids = [
+                norm.kb_id
+                for m in matches
+                for norm in m.attrs.get(label="normalization")
+                if norm.kb_name == "MeSH"
+            ]
+            print(f" - {ent['label']} → «{ent_text}» → {', '.join(mesh_ids)}")
+        else:
+            print(f" - {ent['label']} → «{ent_text}» → —")
