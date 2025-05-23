@@ -1,44 +1,49 @@
-import xml.etree.ElementTree as ET
-import json
+#!/usr/bin/env python3
+import xml.etree.ElementTree as ET, json
 from pathlib import Path
 
-INPUT_FILE  = Path("fredesc2023.xml")     # vérifiez le nom !
+INPUT_FILE  = Path("fredesc2023.xml")     # ← vérifiez le nom exact
 OUTPUT_FILE = "mesh_dict.json"
 
-# 1) Namespace MeSH
-NS = {"m": "http://www.nlm.nih.gov/mesh"}
+mesh_terms, seen = [], set()
 
-mesh_terms = []
+for _, elem in ET.iterparse(INPUT_FILE, events=("end",)):
+    if elem.tag != "DescriptorRecord":
+        continue
 
-# 2) Parcours « streaming » + libération mémoire
-for event, elem in ET.iterparse(INPUT_FILE, events=("end",)):
-    # Retirer le namespace de la balise courante
-    tag = elem.tag.split("}")[-1]
+    mesh_id = elem.findtext("DescriptorUI", default="").strip()
+    if not mesh_id:
+        elem.clear(); continue
 
-    if tag == "DescriptorRecord":
-        mesh_id = elem.findtext("m:DescriptorUI", namespaces=NS)
+    # ---------- libellé principal -------------------------------------------
+    name_node = elem.find("DescriptorName")
+    main_terms = []
+    if name_node is not None:
+        fr = name_node.findtext("StringFR", default="").strip()
+        us = name_node.findtext("StringUS", default="").strip()
+        main_terms = [t for t in (fr, us) if t]
 
-        main_node = elem.find("m:DescriptorName/m:String", namespaces=NS)
-        if mesh_id is None or main_node is None:
-            # Certains enregistrements incomplets : on ignore
-            elem.clear()
-            continue
+    # ---------- synonymes ----------------------------------------------------
+    syn_terms = []
+    for term in elem.findall(".//TermList/Term"):
+        fr = term.findtext("StringFR", default="").strip()
+        us = term.findtext("StringUS", default="").strip()
+        syn_terms.extend(t for t in (fr, us) if t)
 
-        main_term = main_node.text.strip()
-        term_set = {main_term}
+    if not main_terms:
+        elem.clear(); continue           # enregistrement incomplet
 
-        # Tous les synonymes (TermList)
-        for term in elem.findall(".//m:TermList/m:Term/m:String", namespaces=NS):
-            if term.text:
-                term_set.add(term.text.strip())
+    term_set = set(main_terms + syn_terms)
 
-        # Ajout dans la liste finale
-        for term in sorted(term_set):
+    for term in term_set:
+        key = (term.lower(), mesh_id)
+        if key not in seen:
             mesh_terms.append({"term": term, "id": mesh_id})
+            seen.add(key)
 
-        elem.clear()          # libère la RAM
+    elem.clear()                         # libère la mémoire
 
-# 3) Sauvegarde JSON utf-8
+# ---------- sauvegarde JSON --------------------------------------------------
 with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
     json.dump(mesh_terms, f, ensure_ascii=False, indent=2)
 
