@@ -1,0 +1,23 @@
+{
+  "_data_files": [
+    {
+      "filename": "data-00000-of-00001.arrow"
+    }
+  ],
+  "_fingerprint": "32dd4ca02d46c781",
+  "_format_columns": [
+    "article_id",
+    "article_text",
+    "document_type",
+    "domain",
+    "language",
+    "language_score",
+    "detected_entities",
+    "mesh_from_gliner",
+    "pubmed_mesh"
+  ],
+  "_format_kwargs": {},
+  "_format_type": null,
+  "_output_all_columns": false,
+  "_split": "train"
+}
