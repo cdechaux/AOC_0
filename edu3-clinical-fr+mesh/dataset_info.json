@@ -2,16 +2,16 @@
   "builder_name": "parquet",
   "citation": "",
   "config_name": "default",
-  "dataset_name": "edu3-clinical-fr",
-  "dataset_size": 5706315,
+  "dataset_name": "edu3-clinical-fr-mesh",
+  "dataset_size": 605699,
   "description": "",
   "download_checksums": {
-    "hf://datasets/rntc/edu3-clinical-fr@5a20ed89faa1ecf7af0bc3021083e92c5625bdd0/data/train-00000-of-00001-fe7c47dbf7566d3f.parquet": {
-      "num_bytes": 3147335,
+    "hf://datasets/clairedhx/edu3-clinical-fr-mesh@cddfde0ec459ec55d13f6e2a55e001a99d1fe68b/data/train-00000-of-00001.parquet": {
+      "num_bytes": 311349,
       "checksum": null
     }
   },
-  "download_size": 3147335,
+  "download_size": 311349,
   "features": {
     "article_id": {
       "dtype": "string",
@@ -56,13 +56,13 @@
   },
   "homepage": "",
   "license": "",
-  "size_in_bytes": 8853650,
+  "size_in_bytes": 917048,
   "splits": {
     "train": {
       "name": "train",
-      "num_bytes": 5706315,
-      "num_examples": 1231,
-      "dataset_name": "edu3-clinical-fr"
+      "num_bytes": 605699,
+      "num_examples": 309,
+      "dataset_name": "edu3-clinical-fr-mesh"
     }
   },
   "version": {

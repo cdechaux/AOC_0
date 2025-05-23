@@ -97,7 +97,6 @@ def extract_entities(example):
 
 
 new_ds = ds.map(extract_entities, batched=False, desc="annotating")
-new_ds.save_to_disk("edu3-clinical-fr+mesh")
 
 
 
@@ -119,7 +118,8 @@ new_ds = new_ds.cast(
 )
 
 
+new_ds.save_to_disk("edu3-clinical-fr+mesh")
 
 
 api = HfApi()
-new_ds.push_to_hub("votre-compte/edu3-clinical-fr-mesh", private=True)
+#new_ds.push_to_hub("clairedhx/edu3-clinical-fr-mesh", private=True)
