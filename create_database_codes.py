@@ -6,7 +6,52 @@ import json
 from pathlib import Path
 
 # --- 1. Charger les données (cas cliniques)
-dataset = load_dataset("rntc/edu3-clinical-fr", split="train")
+ds = load_dataset("rntc/edu3-clinical-fr", split="train")
+
+# --- 2. Initialiser GLiNER Biomed
+gliner_model = GLiNER.from_pretrained("Ihor/gliner-biomed-large-v1.0", device="cuda")
+labels = ["disease", "condition", "symptom", "treatment"]
+
+# --- 3. Charger dictionnaire MeSH JSON
+with open("mesh_dict.json", encoding="utf-8") as f:
+    mesh_dict = json.load(f)
+
+# --- 3 bis. Creer des rules à partir du dictionnaire
+rules = []
+
+for entry in mesh_dict:
+    if (
+        isinstance(entry, dict)
+        and entry.get("term", "").strip()
+        and "id" in entry
+    ):
+        rule = SimstringMatcherRule.from_dict({
+            "term": entry["term"],
+            "label": "medical_entity",
+            "case_sensitive": False,
+            "unicode_sensitive": False,
+            "normalizations": [
+                {
+                    "kb_name": "MeSH",
+                    "id": entry["id"],           # ✅ bien 'id'
+                    "kb_version": None,
+                    "term": None
+                }
+            ]
+        })
+        rules.append(rule)
+    else:
+        print("⚠️ Ignored entry:", entry)
+
+
+
+
+matcher = SimstringMatcher(
+    rules=rules,
+    threshold=0.85,
+    similarity="jaccard"
+)
+
 
 
 def extract_entities(example):
