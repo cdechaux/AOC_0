@@ -79,12 +79,12 @@ for i, ex in enumerate(cas_cliniques[:5]):  # ⚠️ Limité à 5 pour test
 
         # 4) passer ce Segment au SimstringMatcher
         matches = matcher.run([seg])
-        print(matches)
+        #print(matches)
         if matches:
             mesh_ids = [
                 norm.kb_id
                 for m in matches
-                for norm in m.attrs.get(label="normalization")
+                for norm in m.attrs.get(label="NORMALIZATION")
                 if norm.kb_name == "MeSH"
             ]
             print(f" - {ent['label']} → «{ent_text}» → {', '.join(mesh_ids)}")
