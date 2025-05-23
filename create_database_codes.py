@@ -4,6 +4,7 @@ from medkit.core.text import TextDocument, Segment, Span
 from medkit.text.ner import SimstringMatcher, SimstringMatcherRule
 import json
 from pathlib import Path
+from huggingface_hub import HfApi
 
 # --- 1. Charger les données (cas cliniques)
 ds = load_dataset("rntc/edu3-clinical-fr", split="train")
@@ -93,5 +94,32 @@ def extract_entities(example):
     return example
 
 
+
+
 new_ds = ds.map(extract_entities, batched=False, desc="annotating")
 new_ds.save_to_disk("edu3-clinical-fr+mesh")
+
+
+
+
+# 4) ajouter la colonne 'mesh_from_gliner'
+def uniq_mesh(example):
+    # extrait tous les mesh_id non nuls, enlève les doublons
+    mesh_ids = {ent["mesh_id"] for ent in example["detected_entities"] if ent["mesh_id"]}
+    example["mesh_from_gliner"] = sorted(mesh_ids)          # liste triée (ou laissez-la en set)
+    return example
+
+new_ds = new_ds.map(uniq_mesh, desc="adding mesh_from_gliner")
+
+# 4 bis) préciser le schéma de la nouvelle colonne (facultatif mais propre)
+new_ds = new_ds.cast(
+    Features(
+        {**ds.features, "mesh_from_gliner": Sequence(Value("string"))}
+    )
+)
+
+
+
+
+api = HfApi()
+new_ds.push_to_hub("votre-compte/edu3-clinical-fr-mesh", private=True)
