@@ -59,6 +59,13 @@
         "_type": "Value"
       },
       "_type": "Sequence"
+    },
+    "pubmed_mesh": {
+      "feature": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "_type": "Sequence"
     }
   },
   "homepage": "",

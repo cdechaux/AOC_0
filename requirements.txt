@@ -1,4 +1,5 @@
 datasets==3.6.0
 medkit-lib
 huggingface-hub 
+gliner
 simstring

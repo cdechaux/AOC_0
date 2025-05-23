@@ -1,4 +1,4 @@
-from datasets import load_dataset
+from datasets import load_dataset, DatasetDict, Features, Sequence, Value, ClassLabel
 from gliner import GLiNER
 from medkit.core.text import TextDocument, Segment, Span 
 from medkit.text.ner import SimstringMatcher, SimstringMatcherRule
@@ -7,6 +7,8 @@ from pathlib import Path
 
 # --- 1. Charger les données (cas cliniques)
 dataset = load_dataset("rntc/edu3-clinical-fr", split="train")
+
+
 cas_cliniques = [ex for ex in dataset if ex["document_type"] == "Clinical case"]
 
 # --- 2. Initialiser GLiNER Biomed
