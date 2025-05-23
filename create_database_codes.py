@@ -8,6 +8,10 @@ from pathlib import Path
 # --- 1. Charger les données (cas cliniques)
 ds = load_dataset("rntc/edu3-clinical-fr", split="train")
 
+# 1bis. filtrer sur la colonne 'document_type'
+ds = ds.filter(lambda ex: ex["document_type"] == "Clinical case")
+print(len(ds), "cas cliniques conservés")  
+
 # --- 2. Initialiser GLiNER Biomed
 gliner_model = GLiNER.from_pretrained("Ihor/gliner-biomed-large-v1.0", device="cuda")
 labels = ["disease", "condition", "symptom", "treatment"]
