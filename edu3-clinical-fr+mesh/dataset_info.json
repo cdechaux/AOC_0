@@ -1,0 +1,74 @@
+{
+  "builder_name": "parquet",
+  "citation": "",
+  "config_name": "default",
+  "dataset_name": "edu3-clinical-fr",
+  "dataset_size": 5706315,
+  "description": "",
+  "download_checksums": {
+    "hf://datasets/rntc/edu3-clinical-fr@5a20ed89faa1ecf7af0bc3021083e92c5625bdd0/data/train-00000-of-00001-fe7c47dbf7566d3f.parquet": {
+      "num_bytes": 3147335,
+      "checksum": null
+    }
+  },
+  "download_size": 3147335,
+  "features": {
+    "article_id": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "article_text": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "document_type": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "domain": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "language": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "language_score": {
+      "dtype": "float32",
+      "_type": "Value"
+    },
+    "detected_entities": [
+      {
+        "label": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "mesh_id": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "term": {
+          "dtype": "string",
+          "_type": "Value"
+        }
+      }
+    ]
+  },
+  "homepage": "",
+  "license": "",
+  "size_in_bytes": 8853650,
+  "splits": {
+    "train": {
+      "name": "train",
+      "num_bytes": 5706315,
+      "num_examples": 1231,
+      "dataset_name": "edu3-clinical-fr"
+    }
+  },
+  "version": {
+    "version_str": "0.0.0",
+    "major": 0,
+    "minor": 0,
+    "patch": 0
+  }
+}
