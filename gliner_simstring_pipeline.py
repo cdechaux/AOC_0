@@ -79,7 +79,7 @@ for i, ex in enumerate(cas_cliniques[:5]):  # ⚠️ Limité à 5 pour test
 
         # 4) passer ce Segment au SimstringMatcher
         matches = matcher.run([seg])
-
+        print(matches)
         if matches:
             mesh_ids = [
                 norm.kb_id
