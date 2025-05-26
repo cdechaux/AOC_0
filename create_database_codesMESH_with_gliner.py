@@ -82,15 +82,17 @@ def extract_entities(example):
     """
 
     text = example["article_text"]
-    entities = gliner_model.predict_entities(text, labels)      # entités GLiNER
+    # Reconnaissance d'entités GLiNER 
+    entities = gliner_model.predict_entities(text, labels)     #liste de dicts  ══►  [{'start': int, 'end': int, 'label': str}, …]
 
-    # ------------------ transformation en segments ---------------------------
+    # transformation en segments medkit
     segments = []
     for ent in entities:
         seg = Segment(
-            label="medical_entity",
+            label="medical_entity", # doit matcher celui des rules
             spans=[Span(0, len(text[ent["start"]:ent["end"]]))],
             text=text[ent["start"]:ent["end"]],
+            attrs={"gliner_label": ent["label"]}  # mémorise le type GLiNER
         )
         segments.append(seg)
 
@@ -106,7 +108,7 @@ def extract_entities(example):
         found.append(
             {
                 "term":   m.text,
-                "label":  ent["label"],       # re‐utilisez le label GLiNER
+                "label":  m.attrs.get("gliner_label")[0].value,       # re‐utilisez le label GLiNER
                 "mesh_id": mesh_ids[0],       # premier id (ou None)
             }
         )
@@ -141,4 +143,4 @@ new_ds = new_ds.cast(
 # save to disk et push to hub
 new_ds.save_to_disk("edu3-clinical-fr+mesh")
 api = HfApi()
-#new_ds.push_to_hub("clairedhx/edu3-clinical-fr-mesh", private=True)
+new_ds.push_to_hub("clairedhx/edu3-clinical-fr-mesh-1", private=True)
