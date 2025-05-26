@@ -92,24 +92,24 @@ def extract_entities(example):
             label="medical_entity", # doit matcher celui des rules
             spans=[Span(0, len(text[ent["start"]:ent["end"]]))],
             text=text[ent["start"]:ent["end"]],
-            attrs={"gliner_label": ent["label"]}  # mémorise le type GLiNER
         )
         segments.append(seg)
 
     matches = matcher.run(segments)
 
     found = []
-    for m in matches:
+    for seg, ent in zip(matches, entities):          # même index → même entité
         mesh_ids = [
-            norm.kb_id
-            for norm in m.attrs.get(label="NORMALIZATION")
-            if norm.kb_name == "MeSH"
-        ] or [None]                           # pour avoir au moins un élément
+            n.kb_id
+            for n in seg.attrs.get(label="normalization")
+            if n.kb_name == "MeSH"
+        ] or [None]
+
         found.append(
             {
-                "term":   m.text,
-                "label":  m.attrs.get("gliner_label")[0].value,       # re‐utilisez le label GLiNER
-                "mesh_id": mesh_ids[0],       # premier id (ou None)
+                "term":    seg.text,
+                "label":   ent["label"],          # label GLiNER récupéré ici
+                "mesh_id": mesh_ids[0],
             }
         )
 
@@ -136,7 +136,7 @@ new_ds = new_ds.map(uniq_mesh, desc="adding mesh_from_gliner")
 # --- 5 bis) préciser le schéma de la nouvelle colonne (facultatif mais propre)
 new_ds = new_ds.cast(
     Features(
-        {**ds.features, "mesh_from_gliner": Sequence(Value("string"))}
+        {**new_ds.features, "mesh_from_gliner": Sequence(Value("string"))}
     )
 )
 
