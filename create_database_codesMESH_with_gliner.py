@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from huggingface_hub import HfApi
 
-# --- 1. Charger les données (cas cliniques)
+# --- 1. Charger les données (cas cliniques Pubmed) -> Rian
 ds = load_dataset("rntc/edu3-clinical-fr", split="train")
 
 # 1bis. filtrer sur la colonne 'document_type'
@@ -38,7 +38,7 @@ for entry in mesh_dict:
             "normalizations": [
                 {
                     "kb_name": "MeSH",
-                    "id": entry["id"],           # ✅ bien 'id'
+                    "id": entry["id"],  
                     "kb_version": None,
                     "term": None
                 }
@@ -46,11 +46,11 @@ for entry in mesh_dict:
         })
         rules.append(rule)
     else:
-        print("⚠️ Ignored entry:", entry)
+        print("Ignored entry:", entry)
 
 
 
-
+# --- 4. Creer le matcher Simstring
 matcher = SimstringMatcher(
     rules=rules,
     threshold=0.85,
@@ -60,8 +60,29 @@ matcher = SimstringMatcher(
 
 
 def extract_entities(example):
+    """
+    À partir d’un compte-rendu (`example["article_text"]`) :
+
+    1. détection des entités biomédicales via GLiNER ;
+    2. normalisation MeSH avec SimstringMatcher ;
+    3. construction d’une colonne `detected_entities`
+       ▸ chaque entrée = {term, label_gliner, mesh_id}.
+
+    ---------
+    Paramètre
+    ---------
+    example : dict
+        Exemple (ligne) du Dataset HF – DOIT contenir la clé « article_text ».
+
+    ---------
+    Retour
+    ---------
+    example : dict
+        Même dictionnaire, enrichi de la clé « detected_entities ».
+    """
+
     text = example["article_text"]
-    entities = gliner_model.predict_entities(text, labels)      # ← vos entités GLiNER
+    entities = gliner_model.predict_entities(text, labels)      # entités GLiNER
 
     # ------------------ transformation en segments ---------------------------
     segments = []
@@ -101,7 +122,7 @@ new_ds = ds.map(extract_entities, batched=False, desc="annotating")
 
 
 
-# 4) ajouter la colonne 'mesh_from_gliner'
+# ---5) ajouter la colonne 'mesh_from_gliner' (lise des codes mesh uniques)
 def uniq_mesh(example):
     # extrait tous les mesh_id non nuls, enlève les doublons
     mesh_ids = {ent["mesh_id"] for ent in example["detected_entities"] if ent["mesh_id"]}
@@ -110,16 +131,14 @@ def uniq_mesh(example):
 
 new_ds = new_ds.map(uniq_mesh, desc="adding mesh_from_gliner")
 
-# 4 bis) préciser le schéma de la nouvelle colonne (facultatif mais propre)
+# --- 5 bis) préciser le schéma de la nouvelle colonne (facultatif mais propre)
 new_ds = new_ds.cast(
     Features(
         {**ds.features, "mesh_from_gliner": Sequence(Value("string"))}
     )
 )
 
-
+# save to disk et push to hub
 new_ds.save_to_disk("edu3-clinical-fr+mesh")
-
-
 api = HfApi()
 #new_ds.push_to_hub("clairedhx/edu3-clinical-fr-mesh", private=True)
