@@ -4,8 +4,17 @@
       "filename": "data-00000-of-00001.arrow"
     }
   ],
-  "_fingerprint": "df4e10fd544d2ff3",
-  "_format_columns": null,
+  "_fingerprint": "806252e434881f77",
+  "_format_columns": [
+    "article_id",
+    "article_text",
+    "document_type",
+    "domain",
+    "language",
+    "language_score",
+    "detected_entities",
+    "mesh_from_gliner"
+  ],
   "_format_kwargs": {},
   "_format_type": null,
   "_output_all_columns": false,
