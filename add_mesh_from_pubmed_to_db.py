@@ -64,7 +64,7 @@ def fetch_mesh_for_pmids(pmids):
 pmids_all = list({str(p) for p in ds["article_id"] if p})  # unique, str
 pmid2mesh = {}
 
-print("↻ Téléchargement des MeSH headings depuis PubMed …")
+print("Téléchargement des MeSH headings depuis PubMed …")
 for i in tqdm(range(0, len(pmids_all), BATCH_SIZE)):
     chunk = pmids_all[i : i + BATCH_SIZE]
     pmid2mesh.update(fetch_mesh_for_pmids(chunk))

@@ -4,15 +4,15 @@
       "filename": "data-00000-of-00001.arrow"
     }
   ],
-  "_fingerprint": "32dd4ca02d46c781",
+  "_fingerprint": "b4cc7383a3045895",
   "_format_columns": [
     "article_id",
     "article_text",
+    "detected_entities",
     "document_type",
     "domain",
     "language",
     "language_score",
-    "detected_entities",
     "mesh_from_gliner",
     "pubmed_mesh"
   ],
