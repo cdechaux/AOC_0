@@ -101,7 +101,7 @@ def extract_entities(example):
     for seg, ent in zip(matches, entities):          # même index → même entité
         mesh_ids = [
             n.kb_id
-            for n in seg.attrs.get(label="normalization")
+            for n in seg.attrs.get(label="NORMALIZATION")
             if n.kb_name == "MeSH"
         ] or [None]
 
