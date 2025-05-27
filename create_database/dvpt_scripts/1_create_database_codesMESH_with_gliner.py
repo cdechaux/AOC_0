@@ -18,7 +18,7 @@ gliner_model = GLiNER.from_pretrained("Ihor/gliner-biomed-large-v1.0", device="c
 labels = ["disease", "condition", "symptom", "treatment"]
 
 # --- 3. Charger dictionnaire MeSH JSON
-with open("create_database/dictionnaires/mesh_dict.json", encoding="utf-8") as f:
+with open("create_database/data/dictionnaires/mesh_dict.json", encoding="utf-8") as f:
     mesh_dict = json.load(f)
 
 # --- 3 bis. Creer des rules à partir du dictionnaire
@@ -141,6 +141,6 @@ new_ds = new_ds.cast(
 )
 
 # save to disk et push to hub
-new_ds.save_to_disk("create_database/local_databases/edu3-clinical-fr+mesh")
+new_ds.save_to_disk("create_database/data/local_databases/edu3-clinical-fr+mesh")
 api = HfApi()
 new_ds.push_to_hub("clairedhx/edu3-clinical-fr-mesh-1", private=True)

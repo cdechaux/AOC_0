@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET, json
 from pathlib import Path
 
 INPUT_FILE  = Path("fredesc2023.xml")     # ← vérifiez le nom exact
-OUTPUT_FILE = "create_database/dictionnaires/mesh_dict.json"
+OUTPUT_FILE = "create_database/data/dictionnaires/mesh_dict.json"
 
 mesh_terms, seen = [], set()
 
