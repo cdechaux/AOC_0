@@ -30,20 +30,17 @@ class MeshNormalizer(Operation):
     # ------------------------------------------------------------------
     def run(self, segments: list[Segment]):
         """
-        Parameters
-        ----------
-        segments : list[Segment]
-            Segments précédemment générés par le détecteur (label
-            `medical_entity`).
-
-        Returns
-        -------
-        list[Segment]
-            La même liste, mais chaque segment peut se voir ajouter
-            un attr `"normalization"` (kb_name="MeSH", kb_id="D...").
+        Ajoute les codes MeSH **et** recopie les attributs GLiNER
+        (gliner_label) sur les nouveaux segments.
         """
-        # Le matcher modifie les segments in-place et les renvoie.
-        return self._matcher.run(segments)      # type: ignore
+        out = self._matcher.run(segments)           # nouveaux segments
+
+        # copie tous les attributs du segment source vers sa sortie jumelle
+        for src, dst in zip(segments, out):
+            for attr in src.attrs:
+                dst.attrs.add(attr.copy())
+
+        return out   # type: ignore
 
 
 # pour un import direct:  from pipeline.mesh_normalizer import MeshNormalizer
