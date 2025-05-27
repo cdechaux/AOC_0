@@ -3,3 +3,5 @@ medkit-lib
 huggingface-hub 
 gliner
 pandas
+typer
+dotenv
