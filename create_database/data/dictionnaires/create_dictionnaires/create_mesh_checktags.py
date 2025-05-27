@@ -10,4 +10,4 @@ CHECK_TAG_IDS = {
     "D020385","D040241","D040243","D042882","D044127","D046143","D048506"
 }
 
-json.dump(sorted(CHECK_TAG_IDS), open("mesh_checktags.json","w"), indent=2)
+json.dump(sorted(CHECK_TAG_IDS), open("create_database/data/dictionnaires/mesh_checktags.json","w"), indent=2)

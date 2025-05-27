@@ -4,7 +4,7 @@ import requests, time, json, pathlib
 from datasets import load_dataset, Features, Sequence, Value
 
 REPO     = "clairedhx/edu3-clinical-fr-mesh-2"
-CHECKTGS = set(json.load(open("mesh_checktags.json")))
+CHECKTGS = set(json.load(open("create_database/data/dictionnaires/mesh_checktags.json")))
 UMLS_APIKEY = "YOUR_UMLS_APIKEY_HERE"
 
 # ----------------------------- Auth helper ----------------------------------
