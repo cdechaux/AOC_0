@@ -9,6 +9,7 @@ class GlinerDetector(Operation):
         self._model = GLiNER.from_pretrained(
             "Ihor/gliner-biomed-large-v1.0", device=device
         )
+        self.output_label = out_label
 
     def run(self, segments):
         text = segments[0].text if segments else ""
