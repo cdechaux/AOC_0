@@ -3,7 +3,11 @@ import os, time, requests, xml.etree.ElementTree as ET, json, pathlib
 _API = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 _KEY = os.getenv("NCBI_API_KEY")
 _CACHE = pathlib.Path("create_database/data/dictionnaires/cache_pubmed.json")
-mapping = json.loads(_CACHE.read_text()) if _CACHE.exists() else {}
+try:
+    mapping = json.loads(_CACHE.read_text()) if _CACHE.exists() else {}
+except json.JSONDecodeError:
+    # fichier vide ou corrompu → on repart d’un cache vide
+    mapping = {}
 
 def fetch_batch(pmids):
     ids = ",".join(pmids)
