@@ -1,7 +1,7 @@
 import typer, os, datasets
 from dotenv import load_dotenv
 from huggingface_hub import HfApi
-from pipeline.build_pipeline import get_pipeline
+from create_database.src.pipeline.build_pipeline import get_doc_pipeline
 from pubmed.fetch_mesh import fetch_batch, mapping as pmid2mesh
 
 app = typer.Typer()
@@ -15,7 +15,7 @@ def build(push: bool = True):
     ds = ds.filter(lambda x: x["document_type"] == "Clinical case")
 
     # 2. Medkit pipeline
-    pipe = get_pipeline(device="cuda")
+    pipe = get_doc_pipeline(device="cuda")
     def medkit_map(ex):
         doc = datasets.Features({"text": datasets.Value("string")}).encode_example(
             {"text": ex["article_text"]})
