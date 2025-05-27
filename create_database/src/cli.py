@@ -1,5 +1,6 @@
 import typer, os, datasets
 from dotenv import load_dotenv
+from datasets import Features, Sequence, Value, load_dataset
 from huggingface_hub import HfApi
 from create_database.src.pipeline.build_pipeline import get_doc_pipeline
 from create_database.src.pubmed.fetch_mesh import fetch_batch, mapping as pmid2mesh
@@ -15,22 +16,54 @@ def build(push: bool = True):
     # 2. Medkit pipeline
     doc_pipe = get_doc_pipeline(device="cuda")
     def medkit_map(ex):
-        # 1) construire un véritable TextDocument
+        # --- document Medkit
         doc = TextDocument(text=ex["article_text"])
+        doc_pipe.run([doc])                    # exécute le pipeline
 
-        # 2) exécuter le pipeline
-        doc_pipe.run([doc])
+        detected = []
+        for seg in doc.anns:
+            if seg.label != "medical_entity":
+                continue
 
-        # 3) récupérer les codes MeSH ajoutés
-        codes = {
-            norm.kb_id
-            for seg in doc.anns                       # toutes les annotations
-            for norm in seg.attrs.get(label="normalization")
-            if norm.kb_name == "MeSH"
-        }
-        ex["mesh_from_gliner"] = sorted(codes)
+            # label GLiNER
+            gl_attr  = seg.attrs.get(label="gliner_label")
+            gl_label = gl_attr[0].value if gl_attr else None
+
+            # premier code MeSH (s'il existe)
+            mesh_ids = [
+                n.kb_id
+                for n in seg.attrs.get(label="normalization")
+                if n.kb_name == "MeSH"
+            ]
+            mesh_id = mesh_ids[0] if mesh_ids else None
+
+            detected.append({
+                "term": seg.text,
+                "label": gl_label,
+                "mesh_id": mesh_id,
+            })
+
+        # nouvelle colonne 1 : liste détaillée
+        ex["detected_entities"] = detected
+
+        # nouvelle colonne 2 : set unique des codes
+        ex["mesh_from_gliner"] = sorted({
+            d["mesh_id"] for d in detected if d["mesh_id"]
+        })
         return ex
-    ds = ds.map(medkit_map)
+    ds = ds.map(medkit_map, desc="pipeline medkit")
+
+    ds = ds.cast(
+        Features({
+            **ds.features,
+            "detected_entities": Sequence({
+                "term":    Value("string"),
+                "label":   Value("string"),
+                "mesh_id": Value("string"),
+            }),
+            "mesh_from_gliner": Sequence(Value("string")),
+        })
+    )
 
     # 3. PubMed MeSH
     pmids = [str(p) for p in ds["article_id"] if p]
