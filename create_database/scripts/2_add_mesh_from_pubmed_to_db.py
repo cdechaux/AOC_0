@@ -9,7 +9,7 @@ from datasets import load_from_disk, Features, Sequence, Value
 import os, time, requests, xml.etree.ElementTree as ET
 from tqdm import tqdm
 
-LOCAL_DS_DIR = "edu3-clinical-fr+mesh"
+LOCAL_DS_DIR = "create_database/local_databases/edu3-clinical-fr+mesh"
 BATCH_SIZE   = 100          # nb de PMIDs par appel EFetch (max = 200)
 API_KEY      = os.getenv("NCBI_API_KEY")  # facultatif, ↑ quota à 10 req/s
 SLEEP        = 0.34 if API_KEY else 0.4   # délai pour rester < 3 req/s
