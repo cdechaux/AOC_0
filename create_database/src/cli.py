@@ -13,6 +13,10 @@ def build(push: bool = True):
     ds = datasets.load_dataset("rntc/edu3-clinical-fr", split="train")
     ds = ds.filter(lambda x: x["document_type"] == "Clinical case")
 
+    if os.getenv("DEBUG10"):          # ex. DEBUG10=1 python -m create_database.src.cli pour tester sur les 10 premieres lignes seulement
+        ds = ds.select(range(10))
+        print("DEBUG mode : 10 docs")
+
     # 2. Medkit pipeline
     doc_pipe = get_doc_pipeline(device="cuda")
     def medkit_map(ex):
@@ -32,7 +36,7 @@ def build(push: bool = True):
             # premier code MeSH (s'il existe)
             mesh_ids = [
                 n.kb_id
-                for n in seg.attrs.get(label="normalization")
+                for n in seg.attrs.get(label="NORMALIZATION")
                 if n.kb_name == "MeSH"
             ]
             mesh_id = mesh_ids[0] if mesh_ids else None
@@ -53,17 +57,6 @@ def build(push: bool = True):
         return ex
     ds = ds.map(medkit_map, desc="pipeline medkit")
 
-    ds = ds.cast(
-        Features({
-            **ds.features,
-            "detected_entities": Sequence({
-                "term":    Value("string"),
-                "label":   Value("string"),
-                "mesh_id": Value("string"),
-            }),
-            "mesh_from_gliner": Sequence(Value("string")),
-        })
-    )
 
     # 3. PubMed MeSH
     pmids = [str(p) for p in ds["article_id"] if p]

@@ -35,7 +35,7 @@ def get_pipeline(device: str = "cpu") -> Pipeline:
     return Pipeline(
         steps=steps,
         input_keys=["raw_segment"],
-        output_keys=["normalized"],
+        output_keys=["gliner_out","normalized"],
         name="gliner_mesh",
     )
 
