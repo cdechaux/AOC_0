@@ -2,11 +2,8 @@ import typer, os, datasets
 from dotenv import load_dotenv
 from huggingface_hub import HfApi
 from create_database.src.pipeline.build_pipeline import get_doc_pipeline
-from pubmed.fetch_mesh import fetch_batch, mapping as pmid2mesh
+from create_database.src.pubmed.fetch_mesh import fetch_batch, mapping as pmid2mesh
 
-app = typer.Typer()
-
-@app.command()
 def build(push: bool = True):
     load_dotenv()
 
@@ -39,4 +36,4 @@ def build(push: bool = True):
                        commit_message="pipeline medkit + pubmed")
 
 if __name__ == "__main__":
-    app()
+    typer.run(build)   
