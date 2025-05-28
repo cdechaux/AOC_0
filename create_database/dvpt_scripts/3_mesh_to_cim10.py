@@ -105,14 +105,15 @@ def mesh_to_icd(mesh_id: str, session: requests.Session, tgt: str) -> list[str]:
         return []
 
     codes = {
-        rec.get("targetId", "")
+        rec.get("targetUi", "")
         for rec in resp_json.get("result", [])
-        if rec.get("targetId", "").startswith("ICD10CM:")
+        if rec.get("targetUi")          # garde les non-vides
     }
 
-    clean = sorted(c.split(":", 1)[1] for c in codes if c.startswith("ICD10CM:"))
+    clean = sorted(codes)               # PAS de split, PAS de startswith
     CACHE[mesh_id] = clean
     return clean
+
 
 # ------------------------------------------------------------------ #
 # 4. Charger le dataset + collecter les MeSH uniques
