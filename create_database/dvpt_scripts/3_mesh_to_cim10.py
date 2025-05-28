@@ -107,8 +107,9 @@ def mesh_to_icd(mesh_id: str, session: requests.Session, tgt: str) -> list[str]:
     codes = {
         rec.get("targetId", "")
         for rec in resp_json.get("result", [])
-        if rec.get("rootSource") == "ICD10CM"
+        if rec.get("targetId", "").startswith("ICD10CM:")
     }
+
     clean = sorted(c.split(":", 1)[1] for c in codes if c.startswith("ICD10CM:"))
     CACHE[mesh_id] = clean
     return clean
