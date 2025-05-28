@@ -1,86 +1,96 @@
 #!/usr/bin/env python3
 # debug_umls_crosswalk.py
+# -----------------------------------------------------------
 """
-Usage : python debug_umls_crosswalk.py <Mesh_UI>
-Exemple: python debug_umls_crosswalk.py D014057
-          (Tomography, X-Ray Computed)
-Le script :
-  1) charge .env, vérifie UMLS_API_KEY
-  2) demande un TGT puis un ST
-  3) appelle /crosswalk et affiche le JSON brut
-  4) isole targetUi et affiche le résultat final
+Usage
+-----
+    python debug_umls_crosswalk.py <UI_MESH>
+
+Exemple :
+    python debug_umls_crosswalk.py D014057
 """
 
-import os, sys, json, requests, pprint, textwrap
+import os, sys, requests, textwrap, pprint, json
 from dotenv import load_dotenv
 
-# ---------------- 0. Pré-requis ------------------------------------------------
-load_dotenv()
-APIKEY = os.getenv("UMLS_API_KEY")
+# ------------------------- Config ---------------------------------
+load_dotenv()                           # charge .env
+APIKEY  = os.getenv("UMLS_API_KEY")
+TIMEOUT = 25
+
 if not APIKEY:
-    sys.exit("❌  UMLS_API_KEY manquant dans .env ou variables d’environnement")
+    sys.exit("❌  UMLS_API_KEY manquant (env ou .env)")
 
 if len(sys.argv) < 2:
-    sys.exit("Usage: python debug_umls_crosswalk.py <Mesh_UI>")
+    sys.exit("Usage: python debug_umls_crosswalk.py <UI_MESH>")
 
-MESH_UI = sys.argv[1]
+UI_MESH = sys.argv[1]
 
-TIMEOUT = 30
+# ------------------------- Auth CAS -------------------------------
+def get_tgt():
+    r = requests.post(
+        "https://utslogin.nlm.nih.gov/cas/v1/api-key",
+        data={"apikey": APIKEY},
+        timeout=TIMEOUT,
+    )
+    r.raise_for_status()
+    return r.headers["location"]
 
-# ---------------- 1. TGT -------------------------------------------------------
-print("🔑 Obtention TGT…")
-tgt_resp = requests.post(
-    "https://utslogin.nlm.nih.gov/cas/v1/api-key",
-    data={"apikey": APIKEY},
-    headers={"Content-Type": "application/x-www-form-urlencoded"},
-    timeout=TIMEOUT,
-)
+def get_st(tgt):
+    r = requests.post(
+        tgt,
+        data={"service": "http://umlsks.nlm.nih.gov"},
+        timeout=TIMEOUT,
+    )
+    r.raise_for_status()
+    return r.text.strip()
 
-print("Status:", tgt_resp.status_code)
-if tgt_resp.status_code != 201:
-    print(tgt_resp.text[:500])
-    sys.exit("❌  Impossible d’obtenir un TGT")
+TGT = get_tgt()
+print("🔑 TGT OK")
 
-TGT = tgt_resp.headers["location"]
-print("TGT =", TGT)
+# ------------------ Étape A : UI MeSH ➜ CUI -----------------------
+st = get_st(TGT)
+url_cui = (f"https://uts-ws.nlm.nih.gov/rest/content/current/source/"
+           f"MSH/{UI_MESH}?ticket={st}")
+print(f"\n1️⃣  UI ➜ CUI  ({url_cui})")
+resp = requests.get(url_cui, timeout=TIMEOUT).json()
 
-# ---------------- 2. ST --------------------------------------------------------
-print("\n🎫 Obtention ST…")
-st_resp = requests.post(
-    TGT,
-    data={"service": "http://umlsks.nlm.nih.gov"},
-    headers={"Content-Type": "application/x-www-form-urlencoded"},
-    timeout=TIMEOUT,
-)
-print("Status:", st_resp.status_code)
-ST = st_resp.text.strip()
-print("ST =", ST)
+concepts = resp.get("result", {}).get("concepts", [])
+if not concepts:
+    sys.exit("❌  Aucun concept trouvé pour ce MeSH UI")
 
-# ---------------- 3. Crosswalk -------------------------------------------------
-url = (
-    "https://uts-ws.nlm.nih.gov/rest/crosswalk/current/source/"
-    f"MSH/{MESH_UI}?targetSource=ICD10CM&ticket={ST}"
-)
-print("\n🌐 Requête Crosswalk :")
-print(url)
+cui = concepts[0] if isinstance(concepts[0], str) else concepts[0]["ui"]
+print("CUI récupéré :", cui)
 
-x_resp = requests.get(url, timeout=TIMEOUT)
-print("Status:", x_resp.status_code)
 
-try:
-    data = x_resp.json()
-except ValueError:
-    print(textwrap.shorten(x_resp.text, 500))
-    sys.exit("❌  Réponse non JSON")
 
-print("\nJSON brut :")
-pprint.pp(data, depth=3, compact=True)
+# ------------------ Étape B : CUI ➜ ICD-10 ------------------------
+st = get_st(TGT)
+url_xw = (f"https://uts-ws.nlm.nih.gov/rest/crosswalk/current/id/"
+          f"{cui}?targetSource=ICD10&ticket={st}")   # « ICD10 » = toutes variantes
+print(f"\n2️⃣  CUI ➜ ICD10*  ({url_xw})")
+xw = requests.get(url_xw, timeout=TIMEOUT).json()
 
-# ---------------- 4. Extraction des codes -------------------------------------
-codes = {
-    rec.get("targetUi", "")
-    for rec in data.get("result", [])
-    if rec.get("targetUi")            # non vide
-}
+if "result" not in xw:
+    print("Réponse inattendue :")
+    pprint.pp(xw)
+    sys.exit()
 
-print("\nCodes ICD10CM extraits :", codes or "— aucun —")
+# ------------------ Affichage synthétique -------------------------
+print("\nrootSource   targetUi   →   targetName")
+print("-" * 60)
+for rec in xw["result"]:
+    src  = rec.get("rootSource")
+    code = rec.get("targetUi")
+    name = rec.get("targetName", "")[:50]
+    print(f"{src:<10}  {code:<10}  →  {name}")
+print("-" * 60)
+
+# ------------------ Bilan compact ---------------------------------
+grouped = {}
+for rec in xw["result"]:
+    grouped.setdefault(rec["rootSource"], set()).add(rec["targetUi"])
+
+print("\nRésumé :")
+for src, codes in grouped.items():
+    print(f"  {src} : {', '.join(sorted(codes))}")
