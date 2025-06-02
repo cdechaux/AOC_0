@@ -9,7 +9,7 @@ from huggingface_hub import HfApi
 # --- 1. Charger les données (cas cliniques Pubmed) -> Rian
 ds = load_dataset("rntc/edu3-clinical-fr", split="train")
 
-# 1bis. filtrer sur la colonne 'document_type'
+# 1bis. filtrer colonne 'document_type'
 ds = ds.filter(lambda ex: ex["document_type"] == "Clinical case")
 print(len(ds), "cas cliniques conservés")  
 
@@ -21,7 +21,7 @@ labels = ["disease", "condition", "symptom", "treatment"]
 with open("create_database/data/dictionnaires/mesh_dict.json", encoding="utf-8") as f:
     mesh_dict = json.load(f)
 
-# --- 3 bis. Creer des rules à partir du dictionnaire
+# 3 bis. Creer des rules à partir du dictionnaire
 rules = []
 
 for entry in mesh_dict:
