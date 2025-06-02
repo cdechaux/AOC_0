@@ -1,5 +1,5 @@
 # AOC_0
-
+```text
 ├── create_database
 │   ├── data
 │   │   ├── dictionnaires
@@ -58,6 +58,6 @@
 ├── pipelines_traitement
 ├── README.md
 └── requirements.txt
-
+```
 
 python -m create_database.src.cli
