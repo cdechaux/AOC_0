@@ -34,7 +34,6 @@
 │   │   └── utils.py
 │   └── stats_desc
 │       └── mesh_stats.ipynb
-├── pipelines_traitement
 ├── README.md
 └── requirements.txt
 ```
