@@ -1,94 +1,55 @@
-
-"""
-Usage
------
-    python debug_umls_crosswalk.py <UI_MESH>
-
-Exemple :
-    python debug_umls_crosswalk.py D014057
-"""
-
-import os, sys, requests, textwrap, pprint, json
+#!/usr/bin/env python3
+import os, sys, json, requests
 from dotenv import load_dotenv
 
-# Config 
-load_dotenv()                          
-APIKEY  = os.getenv("UMLS_API_KEY")
-TIMEOUT = 25
-
-if not APIKEY:
-    sys.exit("UMLS_API_KEY manquant (env ou .env)")
-
+load_dotenv()
+KEY = os.getenv("UMLS_API_KEY")
+if not KEY:
+    sys.exit("UMLS_API_KEY manquant")
 if len(sys.argv) < 2:
     sys.exit("Usage: python debug_umls_crosswalk.py <UI_MESH>")
 
-UI_MESH = sys.argv[1]
+UI = sys.argv[1]
+BASE = "https://uts-ws.nlm.nih.gov/rest"
+TO   = 25
 
-#  Auth CAS 
-def get_tgt():
-    r = requests.post(
-        "https://utslogin.nlm.nih.gov/cas/v1/api-key",
-        data={"apikey": APIKEY},
-        timeout=TIMEOUT,
-    )
-    r.raise_for_status()
-    return r.headers["location"]
+# -------------------------------------------------- UI -> concepts URL
+url1 = f"{BASE}/content/current/source/MSH/{UI}?apiKey={KEY}"
+data1 = requests.get(url1, timeout=TO).json()
+concepts_url = data1.get("result", {}).get("concepts")
+if not concepts_url:
+    sys.exit("❌ pas de champ 'concepts'")
 
-def get_st(tgt):
-    r = requests.post(
-        tgt,
-        data={"service": "http://umlsks.nlm.nih.gov"},
-        timeout=TIMEOUT,
-    )
-    r.raise_for_status()
-    return r.text.strip()
+concepts_url = f"{concepts_url}?apiKey={KEY}"
+print("URL concepts :", concepts_url)
 
-TGT = get_tgt()
-print("🔑 TGT OK")
+# -------------------------------------------------- GET concepts
+data2 = requests.get(concepts_url, timeout=TO).json()
+print("\n=== JSON concepts (abrégé) ===")
+print(json.dumps(data2, indent=2)[:1200])
 
-# UI MeSH ➜ CUI 
-st = get_st(TGT)
-url_cui = (f"https://uts-ws.nlm.nih.gov/rest/content/current/source/"
-           f"MSH/{UI_MESH}?ticket={st}")
-print(f"\n1️⃣  UI ➜ CUI  ({url_cui})")
-resp = requests.get(url_cui, timeout=TIMEOUT).json()
+# ---------- extraction du CUI quelle que soit la structure ----------
+cui = None
+if isinstance(data2, list) and data2:
+    cui = data2[0] if isinstance(data2[0], str) else data2[0].get("ui")
+elif isinstance(data2, dict):
+    # nouveau format : {"result":[{...}, {...}]}
+    lst = data2.get("result") or data2.get("results") or []
+    if lst:
+        cui = lst[0] if isinstance(lst[0], str) else lst[0].get("ui")
 
-concepts = resp.get("result", {}).get("concepts", [])
-if not concepts:
-    sys.exit("Aucun concept trouvé pour ce MeSH UI")
+if not cui or not str(cui).startswith("C"):
+    sys.exit("❌ impossible d'extraire un CUI")
 
-cui = concepts[0] if isinstance(concepts[0], str) else concepts[0]["ui"]
-print("CUI récupéré :", cui)
+print("CUI :", cui)
 
+# -------------------------------------------------- CUI -> ICD10* (toutes variantes)
+url3 = f"{BASE}/crosswalk/current/id/{cui}?targetSource=ICD10&apiKey={KEY}"
+data3 = requests.get(url3, timeout=TO).json()
+print("\n=== JSON crosswalk (abrégé) ===")
+print(json.dumps(data3, indent=2)[:1000])
 
-
-# CUI ➜ ICD-10 
-st = get_st(TGT)
-url_xw = (f"https://uts-ws.nlm.nih.gov/rest/crosswalk/current/id/"
-          f"{cui}?targetSource=ICD10&ticket={st}")   # « ICD10 » = toutes variantes
-print(f"\n2️⃣  CUI ➜ ICD10*  ({url_xw})")
-xw = requests.get(url_xw, timeout=TIMEOUT).json()
-
-if "result" not in xw:
-    print("Réponse inattendue :")
-    pprint.pp(xw)
-    sys.exit()
-
-# affichage
-print("\nrootSource   targetUi   →   targetName")
-print("-" * 60)
-for rec in xw["result"]:
-    src  = rec.get("rootSource")
-    code = rec.get("targetUi")
-    name = rec.get("targetName", "")[:50]
-    print(f"{src:<10}  {code:<10}  →  {name}")
-print("-" * 60)
-
-# Résumé
-grouped = {}
-for rec in xw["result"]:
-    grouped.setdefault(rec["rootSource"], set()).add(rec["targetUi"])
-
-print("\nRésumé :")
-for src, codes in grouped.items():
-    print(f"  {src} : {', '.join(sorted(codes))}")
+print("\nrootSource   targetUi")
+print("-"*25)
+for rec in data3.get("result", []):
+    print(f"{rec.get('rootSource',''):<10}  {rec.get('targetUi')}")
