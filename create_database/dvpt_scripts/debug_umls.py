@@ -20,7 +20,7 @@ concepts_url = data1.get("result", {}).get("concepts")
 if not concepts_url:
     sys.exit("❌ pas de champ 'concepts'")
 
-concepts_url = f"{concepts_url}?apiKey={KEY}"
+concepts_url = f"{concepts_url}&apiKey={KEY}"
 print("URL concepts :", concepts_url)
 
 # -------------------------------------------------- GET concepts
@@ -33,10 +33,15 @@ cui = None
 if isinstance(data2, list) and data2:
     cui = data2[0] if isinstance(data2[0], str) else data2[0].get("ui")
 elif isinstance(data2, dict):
-    # nouveau format : {"result":[{...}, {...}]}
-    lst = data2.get("result") or data2.get("results") or []
-    if lst:
-        cui = lst[0] if isinstance(lst[0], str) else lst[0].get("ui")
+    # --- extraction ---
+    srch = data2.get("result", {})          # dict "searchResults"
+    lst  = srch.get("results", [])          # liste des résultats
+
+    if not lst:
+        sys.exit("❌ liste 'results' vide")
+
+    cui = lst[0] if isinstance(lst[0], str) else lst[0]["ui"]
+    print("CUI détecté :", cui)
 
 if not cui or not str(cui).startswith("C"):
     sys.exit("❌ impossible d'extraire un CUI")
@@ -44,7 +49,39 @@ if not cui or not str(cui).startswith("C"):
 print("CUI :", cui)
 
 # -------------------------------------------------- CUI -> ICD10* (toutes variantes)
+
+
+
+
+def get_icd10_via_crosswalk(cui, tgt_src):
+    st  = get_st(TGT)                               # <- ticket
+    url = (f"https://uts-ws.nlm.nih.gov/rest/crosswalk/current/id/"
+           f"{cui}?targetSource={tgt_src}&ticket={st}")
+    print(url)
+    r = requests.get(url, timeout=TO)
+    if r.status_code == 404:
+        return []
+    return [rec["targetUi"] for rec in r.json().get("result", [])]
+
+def get_icd10_via_atoms(cui):
+    url = (f"https://uts-ws.nlm.nih.gov/rest/content/2025AA/CUI/{cui}"
+           f"/atoms?ttys=PT&apiKey={KEY}")
+    print(url)
+    data = requests.get(url, timeout=TO).json()
+    return {
+        a["code"]                           # ex. 'Z01.6'
+        for a in data.get("result", [])
+        if a.get("rootSource") in {"ICD10CM", "ICD10AM", "ICD10AMAE"}
+    }
+
+
+codes = set()
+#for variant in ["ICD10CM", "ICD10AM", "ICD10AMAE"]:
+codes.update(get_icd10_via_atoms(cui))
+print(codes)
+
 url3 = f"{BASE}/crosswalk/current/id/{cui}?targetSource=ICD10&apiKey={KEY}"
+print(url3)
 data3 = requests.get(url3, timeout=TO).json()
 print("\n=== JSON crosswalk (abrégé) ===")
 print(json.dumps(data3, indent=2)[:1000])
