@@ -17,10 +17,10 @@ from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 from tqdm import tqdm
 
-# ------------------------------------------------------------------ #
-# 0. Configuration & .env
-# ------------------------------------------------------------------ #
-load_dotenv()                                 # lit .env dans le cwd
+
+# 0. Configuration 
+
+load_dotenv()                                
 UMLS_KEY    = os.getenv("UMLS_API_KEY")
 if not UMLS_KEY:
     raise RuntimeError("UMLS_API_KEY manquant dans l'environnement ou .env")
@@ -40,9 +40,9 @@ CACHE       = json.loads(CACHE_PATH.read_text()) if CACHE_PATH.exists() else {}
 MAX_WORKERS = 6           # 6×60 req/min ≈ quota UMLS
 TIMEOUT     = 30          # délai réseau confortable
 
-# ------------------------------------------------------------------ #
+
 # 1. Authentification CAS UMLS
-# ------------------------------------------------------------------ #
+
 def get_tgt(api_key: str) -> str:
     resp = requests.post(
         "https://utslogin.nlm.nih.gov/cas/v1/api-key",
@@ -65,9 +65,9 @@ def get_st(tgt: str) -> str:
 
 TGT = get_tgt(UMLS_KEY)
 
-# ------------------------------------------------------------------ #
+
 # 2. Session HTTP avec Retry
-# ------------------------------------------------------------------ #
+
 def make_session() -> requests.Session:
     s = requests.Session()
     retry_cfg = Retry(
@@ -79,9 +79,9 @@ def make_session() -> requests.Session:
     s.mount("https://", HTTPAdapter(max_retries=retry_cfg))
     return s
 
-# ------------------------------------------------------------------ #
+
 # 3. Fonction de résolution MeSH ➜ ICD-10-CM (thread-safe)
-# ------------------------------------------------------------------ #
+
 def mesh_to_icd(mesh_id: str, session: requests.Session, tgt: str) -> list[str]:
     if mesh_id in CACHE:
         return CACHE[mesh_id]

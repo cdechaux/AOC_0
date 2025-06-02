@@ -133,7 +133,7 @@ def uniq_mesh(example):
 
 new_ds = new_ds.map(uniq_mesh, desc="adding mesh_from_gliner")
 
-# --- 5 bis) préciser le schéma de la nouvelle colonne (facultatif mais propre)
+# --- 5 bis) préciser le schéma de la nouvelle colonne (facultatif)
 new_ds = new_ds.cast(
     Features(
         {**new_ds.features, "mesh_from_gliner": Sequence(Value("string"))}

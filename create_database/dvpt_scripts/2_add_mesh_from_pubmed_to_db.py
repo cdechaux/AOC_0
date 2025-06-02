@@ -14,12 +14,12 @@ BATCH_SIZE   = 100          # nb de PMIDs par appel EFetch (max = 200)
 API_KEY      = os.getenv("NCBI_API_KEY")  # facultatif, ↑ quota à 10 req/s
 SLEEP        = 0.34 if API_KEY else 0.4   # délai pour rester < 3 req/s
 
-# --------------------------------------------------------------------------- #
+
 # 1. Dataset local
 ds = load_from_disk(LOCAL_DS_DIR)
 
-# --------------------------------------------------------------------------- #
-# 2. Fonction : récupérer les MeSH pour un lot de PMIDs
+
+# 2. Fonction : récupérer les MeSH pour un lot de PMIDs (100)
 def fetch_mesh_for_pmids(pmids):
     """
     Retourne un dict {pmid: [mesh_id, ...]}  (list vide si rien/erreur)
@@ -59,7 +59,7 @@ def fetch_mesh_for_pmids(pmids):
 
     return out
 
-# --------------------------------------------------------------------------- #
+
 # 3. Build mapping {pmid: [mesh...]}  avec cache en RAM
 pmids_all = list({str(p) for p in ds["article_id"] if p})  # unique, str
 pmid2mesh = {}
@@ -70,7 +70,7 @@ for i in tqdm(range(0, len(pmids_all), BATCH_SIZE)):
     pmid2mesh.update(fetch_mesh_for_pmids(chunk))
     time.sleep(SLEEP)  # respecte le rate NCBI
 
-# --------------------------------------------------------------------------- #
+
 # 4. Ajout de la colonne au dataset
 def add_pubmed_mesh(example):
     example["pubmed_mesh"] = pmid2mesh.get(str(example["article_id"]), [])
@@ -83,13 +83,13 @@ ds = ds.cast(
     Features({**ds.features, "pubmed_mesh": Sequence(Value("string"))})
 )
 
-# --------------------------------------------------------------------------- #
+
 # 5. Sauvegarde locale & push optionnel --------------------------------------
 
-# a) écrase / crée le dossier local
-ds.save_to_disk(LOCAL_DS_DIR+"-2")            # rapide : écrit /meta + liens Arrow
+# écrase / crée le dossier local
+ds.save_to_disk(LOCAL_DS_DIR+"-2")            
 
-# b) push vers le Hub si désiré
+# push vers le Hub 
 #    (suppose hugggingface-cli login déjà fait)
 ds.push_to_hub("clairedhx/edu3-clinical-fr-mesh-2", commit_message="add pubmed_mesh")
 print("✅ Colonne pubmed_mesh ajoutée et dataset ré-enregistré.")
