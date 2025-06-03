@@ -27,11 +27,11 @@ def get_pipeline(device: str = "cpu") -> Pipeline:
         PipelineStep(norm, input_keys=["gliner_out"],
                            output_keys=["mesh_norm"]),
         PipelineStep(icd,  input_keys=["mesh_norm"],
-                           output_keys=["icd10_out"]),  
+                           output_keys=[]),  
     ]
     return Pipeline(steps,
                     input_keys=["raw_segment"],
-                    output_keys=["icd10_out"],
+                    output_keys=[],
                     name="gliner_mesh_icd10")
 
 

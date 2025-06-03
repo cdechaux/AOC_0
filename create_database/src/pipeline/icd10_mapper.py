@@ -3,8 +3,10 @@ from __future__ import annotations
 import os, json, pathlib, requests
 from medkit.core.operation import DocOperation
 from medkit.core.attribute import Attribute
+from dotenv import load_dotenv
 
 BASE   = "https://uts-ws.nlm.nih.gov/rest"
+load_dotenv() 
 APIKEY = os.getenv("UMLS_API_KEY")
 TIMEOUT = 15
 CACHE   = {}          # RAM (option : persister dans utils)
@@ -37,9 +39,19 @@ class ICD10Mapper(DocOperation):
     def _cui_to_codes(self, cui: str) -> list[str]:
         url = (f"{BASE}/content/2025AA/CUI/{cui}"
                f"/atoms?sabs=ICD10CM&pageSize=200&apiKey={APIKEY}")
-        atoms = requests.get(url, timeout=TIMEOUT).json()["result"]
-        return sorted({a["code"].split("/")[-1] for a in atoms
-                       if a["rootSource"] == "ICD10CM"})
+        resp = requests.get(url, timeout=TIMEOUT)
+
+        # 404, 401, ou JSON inattendu ⇒ aucune correspondance
+        if resp.status_code != 200:
+            return []
+
+        data = resp.json()
+        atoms = data.get("result", [])
+        return sorted({
+            a["code"].split("/")[-1]
+            for a in atoms
+            if a.get("rootSource") == "ICD10CM"
+        })
 
     # ---------- opération principale ----------
     def run(self, segments: list):
@@ -66,4 +78,4 @@ class ICD10Mapper(DocOperation):
                     )
                     seg.attrs.add(attr)
                     new_atts.append(attr)
-        return [new_atts]   # un seul flux de sortie
+        return None #tout est deja collé au segment 

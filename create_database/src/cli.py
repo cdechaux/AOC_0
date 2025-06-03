@@ -84,7 +84,7 @@ def build(push: bool = True):
             info["provenance"] = (
                 "both" if len(prov) == 2 else next(iter(prov))
             )
-        ex["icd10_trace"] = trace          # dict code → {cui, mesh_id, provenance}
+        ex["icd10_trace"] = json.dumps(trace, ensure_ascii=False)   # ← string
         return ex
 
     ds = ds.map(medkit_map, desc="pipeline medkit")
@@ -106,7 +106,6 @@ def build(push: bool = True):
         **ds.features,
         "mesh_from_gliner": Sequence(Value("string")),
         "icd10_codes":      Sequence(Value("string")),
-        "icd10_trace":      Value("json"),      # dict sérialisé en JSON
         "pubmed_mesh":      Sequence(Value("string")),
     }))
 
