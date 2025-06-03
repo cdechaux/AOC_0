@@ -19,7 +19,7 @@ def build(push: bool = True):
     ds = ds.filter(lambda x: x["document_type"] == "Clinical case")
 
     if os.getenv("DEBUG10"):
-        ds = ds.select(range(10))
+        ds = ds.select(range(5))
         print("DEBUG : 10 documents seulement")
 
     # ------------------------------------------------------------------ #
@@ -31,13 +31,17 @@ def build(push: bool = True):
         # -------- document Medkit + exécution pipeline --------
         doc = TextDocument(text=ex["article_text"])
         doc_pipe.run([doc])
-
+        print("input_keys :", doc_pipe.pipeline.input_keys)
+        print("output_keys :", doc_pipe.pipeline.output_keys)
+        for step in doc_pipe.pipeline.steps:
+            print(step.operation, "→", step.output_keys) 
         detected = []          # [{term,label,mesh_id}]
         mesh_codes = set()
         icd_codes  = set()
         trace = {}             # code → {cui, mesh_id, provenance}
-
+        print("doc.anns :", doc.anns)
         for seg in doc.anns:
+            print("seg :", seg)
             if seg.label != "medical_entity":
                 continue
 
@@ -51,7 +55,7 @@ def build(push: bool = True):
                 if n.kb_name == "MeSH"
             ]
             mesh_id = mesh_ids[0] if mesh_ids else None
-
+            print("mesh_ids ;", mesh_ids)
             detected.append({
                 "term": seg.text,
                 "label": gl_label,
