@@ -2,7 +2,8 @@ from medkit.core.pipeline import Pipeline, PipelineStep
 from medkit.core.doc_pipeline import DocPipeline
 from .gliner_detector import GlinerDetector
 from .mesh_normalizer import MeshNormalizer
-from ..utils import load_simstring_matcher   # charge votre SimstringMatcher
+from ..utils import load_simstring_matcher   
+from .icd10_mapper      import ICD10Mapper
 
 
 def get_pipeline(device: str = "cpu") -> Pipeline:
@@ -18,26 +19,20 @@ def get_pipeline(device: str = "cpu") -> Pipeline:
         device=device,
     )
     norm = MeshNormalizer(load_simstring_matcher())
+    icd  = ICD10Mapper()   
 
     steps = [
-        PipelineStep(
-            operation=det,
-            input_keys=["raw_segment"],    # segment racine du document
-            output_keys=["gliner_out"],
-        ),
-        PipelineStep(
-            operation=norm,
-            input_keys=["gliner_out"],
-            output_keys=["normalized"],    # sorties finales du pipeline
-        ),
+        PipelineStep(det,  input_keys=["raw_segment"],
+                           output_keys=["gliner_out"]),
+        PipelineStep(norm, input_keys=["gliner_out"],
+                           output_keys=["mesh_norm"]),
+        PipelineStep(icd,  input_keys=["mesh_norm"],
+                           output_keys=["icd10_out"]),  
     ]
-
-    return Pipeline(
-        steps=steps,
-        input_keys=["raw_segment"],
-        output_keys=["gliner_out","normalized"],
-        name="gliner_mesh",
-    )
+    return Pipeline(steps,
+                    input_keys=["raw_segment"],
+                    output_keys=["icd10_out"],
+                    name="gliner_mesh_icd10")
 
 
 def get_doc_pipeline(device: str = "cpu") -> DocPipeline:
