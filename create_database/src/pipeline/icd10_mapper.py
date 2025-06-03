@@ -78,4 +78,4 @@ class ICD10Mapper(DocOperation):
                     )
                     seg.attrs.add(attr)
                     new_atts.append(attr)
-        return None #tout est deja collé au segment 
+        return segments #tout est deja collé au segment 

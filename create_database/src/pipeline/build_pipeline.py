@@ -7,32 +7,38 @@ from .icd10_mapper      import ICD10Mapper
 
 
 def get_pipeline(device: str = "cpu") -> Pipeline:
-    """
-    Construit le graphe d’opérations GLiNER ➜ Simstring/MeSH.
-
-    Retourne un objet `Pipeline` (méta-données + steps) :
-      • input_key  : "raw_segment"  (segment par défaut créé par TextDocument)
-      • output_key : "normalized"   (segments enrichis avec attr MeSH)
-    """
     det  = GlinerDetector(
         labels=["disease", "condition", "symptom", "treatment"],
         device=device,
     )
     norm = MeshNormalizer(load_simstring_matcher())
-    icd  = ICD10Mapper()   
+    icd  = ICD10Mapper()            # modifie les mêmes segments in-place
 
     steps = [
-        PipelineStep(det,  input_keys=["raw_segment"],
-                           output_keys=["gliner_out"]),
-        PipelineStep(norm, input_keys=["gliner_out"],
-                           output_keys=["mesh_norm"]),
-        PipelineStep(icd,  input_keys=["mesh_norm"],
-                           output_keys=[]),  
+        # 1) repérage d’entités
+        PipelineStep(det,
+                     input_keys=["raw_segment"],
+                     output_keys=["gliner_out"]),
+
+        # 2) normalisation MeSH  → nouveaux segments
+        PipelineStep(norm,
+                     input_keys=["gliner_out"],
+                     output_keys=["mesh_norm"]),
+
+        # 3) ajout d’attributs ICD-10-CM sur ces mêmes segments
+        #    – on RENVOIE à nouveau la même liste pour qu’elle reste vivante
+        PipelineStep(icd,
+                     input_keys=["mesh_norm"],
+                     output_keys=["mesh_norm"]),
     ]
-    return Pipeline(steps,
-                    input_keys=["raw_segment"],
-                    output_keys=[],
-                    name="gliner_mesh_icd10")
+
+    # 🔸  *** la clé importante ***
+    return Pipeline(
+        steps=steps,
+        input_keys=["raw_segment"],
+        output_keys=["mesh_norm"],   # <- à attacher au document
+        name="gliner_mesh_icd10",
+    )
 
 
 def get_doc_pipeline(device: str = "cpu") -> DocPipeline:
