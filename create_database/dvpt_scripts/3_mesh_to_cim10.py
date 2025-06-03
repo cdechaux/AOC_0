@@ -1,29 +1,35 @@
 #!/usr/bin/env python3
-# mesh_to_icd10_umls.py
+# mesh_to_icd10_cm.py
 # -----------------------------------------------------------
 """
-• Charge clairedhx/edu3-clinical-fr-mesh-2
-• Fusionne MeSH (GLiNER ∪ PubMed) ▸ filtre check-tags
-• Résout les codes MeSH uniques ➜ ICD-10-CM via l’API UMLS
-  (pool 6 threads + retry + cache JSON)
-• Ajoute mesh_clean & icd10_codes, pousse sur le Hub
+Pipeline résumé
+---------------
+1. Charge le dataset « clairedhx/edu3-clinical-fr-mesh-2 »
+2. Fusionne mesh_from_gliner ∪ pubmed_mesh, filtre les check-tags
+3. Résout chaque UI MeSH unique en codes ICD-10-CM via l’API UMLS :
+       UI (MeSH) ▸ CUI ▸ atoms?sabs=ICD10CM ▸ code
+   • pool 6 threads
+   • cache local JSON
+   • sans TGT/ST (clé API seule)
+4. Ajoute mesh_clean et icd10_codes, pousse le dataset « -mesh-4 »
 """
 
 import os, json, time, pathlib, requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 from datasets import load_dataset, Features, Sequence, Value
+from urllib.parse import quote
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 from tqdm import tqdm
 
-
-# 0. Configuration 
-
-load_dotenv()                                
-UMLS_KEY    = os.getenv("UMLS_API_KEY")
-if not UMLS_KEY:
-    raise RuntimeError("UMLS_API_KEY manquant dans l'environnement ou .env")
+# ------------------------------------------------------------------ #
+# 0. Configuration                                                   #
+# ------------------------------------------------------------------ #
+load_dotenv()
+API_KEY = os.getenv("UMLS_API_KEY")
+if not API_KEY:
+    raise RuntimeError("UMLS_API_KEY manquant (.env)")
 
 DATASET_IN  = "clairedhx/edu3-clinical-fr-mesh-2"
 DATASET_OUT = "clairedhx/edu3-clinical-fr-mesh-4"
@@ -35,88 +41,72 @@ CHECKTAGS   = set(json.load(
 CACHE_PATH  = pathlib.Path(
     "create_database/data/dictionnaires/umls_mesh2icd_cache.json"
 )
-CACHE       = json.loads(CACHE_PATH.read_text()) if CACHE_PATH.exists() else {}
+CACHE = json.loads(CACHE_PATH.read_text()) if CACHE_PATH.exists() else {}
 
-MAX_WORKERS = 6           # 6×60 req/min ≈ quota UMLS
-TIMEOUT     = 30          # délai réseau confortable
+MAX_WORKERS = 6
+TIMEOUT     = 20
+BASE        = "https://uts-ws.nlm.nih.gov/rest"
 
-
-# 1. Authentification CAS UMLS
-
-def get_tgt(api_key: str) -> str:
-    resp = requests.post(
-        "https://utslogin.nlm.nih.gov/cas/v1/api-key",
-        data={"apikey": api_key},
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=TIMEOUT,
-    )
-    resp.raise_for_status()
-    return resp.headers["location"]
-
-def get_st(tgt: str) -> str:
-    resp = requests.post(
-        tgt,
-        data={"service": "http://umlsks.nlm.nih.gov"},
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=TIMEOUT,
-    )
-    resp.raise_for_status()
-    return resp.text.strip()
-
-TGT = get_tgt(UMLS_KEY)
-
-
-# 2. Session HTTP avec Retry
-
+# ------------------------------------------------------------------ #
+# 1. Session HTTP avec Retry                                         #
+# ------------------------------------------------------------------ #
 def make_session() -> requests.Session:
-    s = requests.Session()
+    sess = requests.Session()
     retry_cfg = Retry(
         total=3,
         backoff_factor=1,
         status_forcelist=[500, 502, 503, 504],
-        allowed_methods=False,          # retry POST aussi
+        allowed_methods=False,               # retry GET & POST
     )
-    s.mount("https://", HTTPAdapter(max_retries=retry_cfg))
-    return s
+    sess.mount("https://", HTTPAdapter(max_retries=retry_cfg))
+    return sess
 
-
-# 3. Fonction de résolution MeSH ➜ ICD-10-CM (thread-safe)
-
-def mesh_to_icd(mesh_id: str, session: requests.Session, tgt: str) -> list[str]:
-    if mesh_id in CACHE:
-        return CACHE[mesh_id]
-
-    try:
-        st = get_st(tgt)
-    except requests.exceptions.RequestException as e:
-        print("❗ ST error", mesh_id, e)
-        CACHE[mesh_id] = []
-        return []
-
-    url = (
-        "https://uts-ws.nlm.nih.gov/rest/crosswalk/current/source/"
-        f"MSH/{mesh_id}?targetSource=ICD10CM&ticket={st}"
-    )
-    try:
-        resp_json = session.get(url, timeout=TIMEOUT).json()
-    except (requests.exceptions.RequestException, ValueError) as e:
-        print("❗ Crosswalk error", mesh_id, e)
-        CACHE[mesh_id] = []
-        return []
-
-    codes = {
-        rec.get("targetUi", "")
-        for rec in resp_json.get("result", [])
-        if rec.get("targetUi")          # garde les non-vides
-    }
-
-    clean = sorted(codes)               # PAS de split, PAS de startswith
-    CACHE[mesh_id] = clean
-    return clean
-
+SESSION = make_session()
 
 # ------------------------------------------------------------------ #
-# 4. Charger le dataset + collecter les MeSH uniques
+# 2. Fonctions auxiliaires UMLS                                       #
+# ------------------------------------------------------------------ #
+def mesh_ui_to_cui(ui_mesh: str) -> str | None:
+    """
+    UI MeSH → CUI (premier résultat).
+    Retourne None si rien trouvé.
+    """
+    url = (f"{BASE}/content/current/source/MSH/{quote(ui_mesh)}"
+           f"?apiKey={API_KEY}")
+    data = SESSION.get(url, timeout=TIMEOUT).json()
+    concepts_url = data.get("result", {}).get("concepts")
+    if not concepts_url:
+        return None
+
+    data2 = SESSION.get(f"{concepts_url}&apiKey={API_KEY}", timeout=TIMEOUT).json()
+    results = (data2.get("result") or {}).get("results", [])
+    return results[0]["ui"] if results else None
+
+
+def cui_to_icd10cm(cui: str) -> list[str]:
+    """CUI → liste de codes ICD-10-CM (extraction via atoms)."""
+    url = (f"{BASE}/content/2025AA/CUI/{cui}"
+           f"/atoms?sabs=ICD10CM&pageSize=200&apiKey={API_KEY}")
+    atoms = SESSION.get(url, timeout=TIMEOUT).json().get("result", [])
+    return sorted({
+        a["code"].split("/")[-1]             # …/ICD10CM/I10 → I10
+        for a in atoms
+        if a.get("rootSource") == "ICD10CM"
+    })
+
+
+def mesh_to_icd10cm(ui_mesh: str) -> list[str]:
+    """Résout un UI MeSH unique vers des codes ICD-10-CM (avec cache)."""
+    if ui_mesh in CACHE:
+        return CACHE[ui_mesh]
+
+    cui = mesh_ui_to_cui(ui_mesh)
+    codes = cui_to_icd10cm(cui) if cui else []
+    CACHE[ui_mesh] = codes
+    return codes
+
+# ------------------------------------------------------------------ #
+# 3. Collecte des UI MeSH uniques                                     #
 # ------------------------------------------------------------------ #
 print("⇢ Chargement du dataset…")
 ds = load_dataset(DATASET_IN, split="train")
@@ -127,58 +117,53 @@ all_mesh = sorted({
     for m in (ex["mesh_from_gliner"] + ex["pubmed_mesh"])
     if m and m not in CHECKTAGS
 })
-print(f"→ {len(all_mesh)} codes MeSH uniques à mapper")
+print(f"→ {len(all_mesh)} UI MeSH uniques à mapper")
 
 # ------------------------------------------------------------------ #
-# 5. Résolution parallèle (pool 6 threads)
+# 4. Résolution parallèle (6 threads)                                 #
 # ------------------------------------------------------------------ #
-print("⇢ Résolution UMLS…")
-session = make_session()
-start = time.time()
+print("⇢ Résolution UMLS → ICD-10-CM…")
+t0 = time.time()
 
-def worker(mid):                          # petite fonction wrapper
-    return mesh_to_icd(mid, session, TGT)
+def worker(ui_mesh):
+    return mesh_to_icd10cm(ui_mesh)
 
 with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-    futures = {pool.submit(worker, m): m for m in all_mesh}
-    for i, fut in enumerate(as_completed(futures), 1):
-        fut.result()                      # exceptions déjà gérées
-        if i % (MAX_WORKERS * 10) == 0:   # pause douce: ~60 req/min
-            time.sleep(1)
+    for _ in tqdm(as_completed(pool.submit(worker, m) for m in all_mesh),
+                  total=len(all_mesh), desc="mapping"):
+        pass
 
-print(f"✓ Mapping terminé en {time.time()-start:.1f} s")
+print(f"✓ Mapping terminé en {time.time()-t0:.1f} s")
 
 # ------------------------------------------------------------------ #
-# 6. Appliquer le mapping au dataset
+# 5. Ajout des colonnes au dataset                                    #
 # ------------------------------------------------------------------ #
-def process(example):
+def enrich(example):
     merged = sorted({*example["mesh_from_gliner"], *example["pubmed_mesh"]})
     mesh_clean = [m for m in merged if m not in CHECKTAGS]
-    icd_codes = sorted({c for m in mesh_clean for c in CACHE.get(m, [])})
+    icd_codes  = sorted({c for m in mesh_clean for c in CACHE.get(m, [])})
     example["mesh_clean"]  = mesh_clean
     example["icd10_codes"] = icd_codes
     return example
 
-ds = ds.map(process, desc="MeSH → ICD10", num_proc=4)
+ds = ds.map(enrich, desc="Ajout des colonnes", num_proc=4)
 
-ds = ds.cast(
-    Features({
-        **ds.features,
-        "mesh_clean":  Sequence(Value("string")),
-        "icd10_codes": Sequence(Value("string")),
-    })
-)
+ds = ds.cast(Features({
+    **ds.features,
+    "mesh_clean":  Sequence(Value("string")),
+    "icd10_codes": Sequence(Value("string")),
+}))
 
 # ------------------------------------------------------------------ #
-# 7. Sauvegarde cache + push
+# 6. Sauvegarde cache + push                                          #
 # ------------------------------------------------------------------ #
 CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
 CACHE_PATH.write_text(json.dumps(CACHE, indent=2))
-print("✓ Cache sauvegardé :", CACHE_PATH)
+print("✓ Cache mis à jour :", CACHE_PATH)
 
 ds.push_to_hub(
     DATASET_OUT,
-    commit_message="add mesh_clean + icd10_codes via UMLS API (threads)",
+    commit_message="mesh_clean + icd10_codes via UMLS atoms (ICD10CM)",
     private=False,
 )
-print("🚀 Dataset poussé sur le Hub :", DATASET_OUT)
+print("🚀 Dataset poussé :", DATASET_OUT)
