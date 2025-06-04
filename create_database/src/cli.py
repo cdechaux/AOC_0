@@ -1,116 +1,132 @@
 #!/usr/bin/env python3
-# src/cli.py
-import os, typer, datasets, json
+# ──────────────────────────────────────────────────────────────
+# src/cli.py   –   build + push du jeu de données enrichi
+# ──────────────────────────────────────────────────────────────
+import os
+import json
+import typer
 from dotenv import load_dotenv
-from datasets import Features, Sequence, Value, load_dataset
+from datasets import load_dataset, Features, Sequence, Value
 from huggingface_hub import HfApi
-from create_database.src.pipeline.build_pipeline import get_doc_pipeline
-from create_database.src.pubmed.fetch_mesh import fetch_batch, mapping as pmid2mesh
 from medkit.core.text import TextDocument
 
-# ------------------------------------------------------------------ #
-# 1. Build command                                                   #
-# ------------------------------------------------------------------ #
+# pipeline complet (GLiNER ▸ MeSH ▸ PubMed ▸ ICD-10-CM)
+from create_database.src.pipeline.build_pipeline import get_doc_pipeline
+
+from create_database.src.pubmed.fetch_mesh import mapping as pmid2mesh  
+from create_database.src.pubmed.fetch_mesh import fetch_batch
+
+# ──────────────────────────────────────────────────────────────
+# build()
+# ──────────────────────────────────────────────────────────────
 def build(push: bool = True):
     load_dotenv()
-
-    # 1-a  HuggingFace dataset (cas cliniques)
     ds = load_dataset("rntc/edu3-clinical-fr", split="train")
     ds = ds.filter(lambda x: x["document_type"] == "Clinical case")
 
     if os.getenv("DEBUG10"):
         ds = ds.select(range(5))
-        print("DEBUG : 10 documents seulement")
+        print("DEBUG : 5 documents seulement")
+
+    doc_pipe = get_doc_pipeline(device="cuda")   # ← le pipeline ci-dessus
 
     # ------------------------------------------------------------------ #
-    # 2. Pipeline Medkit (GLiNER + MeSH + ICD-10-CM)
+    # mapping Medkit ➜ colonnes du dataset
     # ------------------------------------------------------------------ #
-    doc_pipe = get_doc_pipeline(device="cuda")   # build_pipeline renvoie déjà DocPipeline
-
     def medkit_map(ex):
-        # -------- document Medkit + exécution pipeline --------
-        doc = TextDocument(text=ex["article_text"])
-        d_out = doc_pipe.run([doc])
-        print("→ pipeline outputs :", d_out) # d_out["mesh_norm"] devrait contenir 12 segments
-        print("len(doc.anns) :", len(doc.anns))
-        for step in doc_pipe.pipeline.steps:
-            print(step.operation, "→", step.output_keys) 
-        detected = []          # [{term,label,mesh_id}]
+        doc = TextDocument(text=ex["article_text"],
+                           metadata={"pmid": str(ex["article_id"])})
+        doc.raw_segment.metadata["pmid"] = str(ex["article_id"])
+        # -- run pipeline
+        doc_pipe.run([doc])
+
+        # -------------- trace ICD10 ------------------------------------
+        trace: dict[str, dict] = {}
+        for seg in doc.anns:
+            for icd_attr in seg.attrs.get(label="ICD10CM"):
+                code = icd_attr.value
+                meta = trace.setdefault(code, {
+                    "cui":        icd_attr.metadata["cui"],
+                    "mesh_id":    icd_attr.metadata["mesh_id"],
+                    "provenance": set(),
+                })
+                meta["provenance"].add(icd_attr.metadata["provenance"])
+
+        # convertir l’ensemble → chaîne
+        for meta in trace.values():
+            p = meta["provenance"]
+            meta["provenance"] = "both" if len(p) == 2 else next(iter(p))
+
+        ex["icd10_trace"] = json.dumps(trace, ensure_ascii=False)
+
+        # -------------- parcourir les segments -------------------------
         mesh_codes = set()
         icd_codes  = set()
-        trace = {}             # code → {cui, mesh_id, provenance}
-        print("doc.anns :", doc.anns)
+        detected   = []
+
         for seg in doc.anns:
-            print("seg :", seg)
             if seg.label != "medical_entity":
                 continue
 
-            # ------ label GLiNER ----------------------------------------
-            gl_attr  = seg.attrs.get(label="gliner_label")
-            gl_label = gl_attr[0].value if gl_attr else None
+            # GLiNER label
+            gl_label_attr = seg.attrs.get(label="gliner_label")
+            gl_label = gl_label_attr[0].value if gl_label_attr else None
 
-            # ------ MeSH -----------------------------------------------
-            mesh_ids = [
-                n.kb_id for n in seg.attrs.get(label="NORMALIZATION")
-                if n.kb_name == "MeSH"
-            ]
-            mesh_id = mesh_ids[0] if mesh_ids else None
-            print("mesh_ids ;", mesh_ids)
-            detected.append({
-                "term": seg.text,
-                "label": gl_label,
-                "mesh_id": mesh_id,
-            })
+            # codes MeSH (0..n)
+            mesh_ids = [n.kb_id for n in seg.attrs.get(label="NORMALIZATION")
+                        if n.kb_name == "MeSH"]
+            mesh_id  = mesh_ids[0] if mesh_ids else None
+
+            detected.append(
+                {"term": seg.text, "label": gl_label, "mesh_id": mesh_id}
+            )
             if mesh_id:
                 mesh_codes.add(mesh_id)
 
-            # ------ ICD-10-CM ------------------------------------------
-            for icd in seg.attrs.get(label="ICD10CM"):
-                code = icd.value            # ex : 'I10'
-                icd_codes.add(code)
+            # codes ICD-10 CM (ajoutés par ICD10Mapper)
+            for icd_attr in seg.attrs.get(label="ICD10CM"):
+                icd_codes.add(icd_attr.value)
 
-                # fusionne provenance si plusieurs occurrences
-                meta = trace.setdefault(code, {
-                    "cui":        icd.metadata["cui"],
-                    "mesh_id":    icd.metadata["mesh_id"],
-                    "provenance": set(),   # on agrège puis stringify
-                })
-                meta["provenance"].add(icd.metadata["provenance"])
-
-        # ---------- colonnes ajoutées ----------
         ex["detected_entities"] = detected
         ex["mesh_from_gliner"]  = sorted(mesh_codes)
         ex["icd10_codes"]       = sorted(icd_codes)
-
-        # provenance → str (« gliner », « pubmed », « both »)
-        for info in trace.values():
-            prov = info["provenance"]
-            info["provenance"] = (
-                "both" if len(prov) == 2 else next(iter(prov))
-            )
-        ex["icd10_trace"] = json.dumps(trace, ensure_ascii=False)   # ← string
         return ex
 
     ds = ds.map(medkit_map, desc="pipeline medkit")
 
     # ------------------------------------------------------------------ #
-    # 3. MeSH PubMed (colonne pubmed_mesh)                               #
+    # 3. Récupération des MeSH PubMed  +  union / inter                  #
     # ------------------------------------------------------------------ #
     pmids = [str(p) for p in ds["article_id"] if p]
-    for chunk in [pmids[i:i+100] for i in range(0, len(pmids), 100)]:
+    for chunk in [pmids[i:i + 100] for i in range(0, len(pmids), 100)]:
         fetch_batch(chunk)                       # remplit le cache global
+
+    # 3-a  ajouter la colonne « pubmed_mesh »
     ds = ds.map(lambda e: {
         **e, "pubmed_mesh": pmid2mesh.get(str(e["article_id"]), [])
     })
 
+    # 3-b  calculer union / intersection
+    def add_union_inter(example):
+        m_gliner = set(example["mesh_from_gliner"])
+        m_pubmed = set(example["pubmed_mesh"])
+
+        example["union_codes_mesh"] = sorted(m_gliner | m_pubmed)
+        example["inter_codes_mesh"] = sorted(m_gliner & m_pubmed)
+        return example
+
+    ds = ds.map(add_union_inter, desc="union / intersection MeSH")
+
     # ------------------------------------------------------------------ #
-    # 4. Déclaration du schéma + push HF                                 #
+    # 4. Schéma + push                                                   #
     # ------------------------------------------------------------------ #
     ds = ds.cast(Features({
         **ds.features,
-        "mesh_from_gliner": Sequence(Value("string")),
-        "icd10_codes":      Sequence(Value("string")),
-        "pubmed_mesh":      Sequence(Value("string")),
+        "mesh_from_gliner":  Sequence(Value("string")),
+        "pubmed_mesh":       Sequence(Value("string")),
+        "union_codes_mesh":  Sequence(Value("string")),
+        "inter_codes_mesh":  Sequence(Value("string")),
+        "icd10_codes":       Sequence(Value("string")),
     }))
 
     if push:
@@ -121,6 +137,6 @@ def build(push: bool = True):
             private=False,
         )
 
-# -------------------------------------------------------------- #
+# ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     typer.run(build)

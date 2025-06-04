@@ -1,84 +1,132 @@
-# src/pipeline/icd10_mapper.py
+# create_database/src/pipeline/icd10_mapper.py
+# ──────────────────────────────────────────────────────────────
+"""Ajout d’attributs ICD-10-CM sur les segments déjà normalisés MeSH.
+
+Entrée  : la liste des segments `mesh_norm` (issus de GLiNER + PubMed).
+Sortie  : aucune (les attributs sont ajoutés in-place).
+Trace   : un attr document‐level ``icd10_trace`` (JSON).
+"""
+
 from __future__ import annotations
-import os, json, pathlib, requests
-from medkit.core.operation import DocOperation
-from medkit.core.attribute import Attribute
+import json
+import pathlib
+from collections import defaultdict
+from typing import List, Dict
+
+from medkit.core import Operation
 from medkit.core.text import Segment
-from dotenv import load_dotenv
+from medkit.core.attribute import Attribute   
 
-BASE   = "https://uts-ws.nlm.nih.gov/rest"
-load_dotenv() 
-APIKEY = os.getenv("UMLS_API_KEY")
-TIMEOUT = 15
-CACHE   = {}          # RAM (option : persister dans utils)
+# --------------------------------------------------------------------------- #
+# 1)  chemins et cache                                                        #
+# --------------------------------------------------------------------------- #
+_CACHE_PATH = pathlib.Path(
+    "create_database/data/dictionnaires/umls_mesh2icd_cache.json"
+)  # produit par mesh_to_icd10_umls.py
 
-class ICD10Mapper(DocOperation):
-    """
-    Prend en entrée des segments contenant un attr NORMALIZATION[kb=MeSH]
-    et ajoute un attr ICD10CM pour chaque code trouvé.
 
-    L’attr ICD10CM porte :
-        • value   : code (ex 'I10')
-        • metadata: {cui, mesh_id, provenance}
-    """
+class ICD10Mapper(Operation):
+    """Mappe MeSH → ICD-10-CM et ajoute les attributs « ICD10CM »."""
 
-    def __init__(self, provenance="gliner"):
-        super().__init__()
-        self._prov = provenance          # 'gliner' ou 'pubmed'
+    def __init__(self, cache_path: pathlib.Path | str = _CACHE_PATH):
+        super().__init__(output_label=None)  # rien en sortie
+        cache_path = pathlib.Path(cache_path)
 
-    # ---------- helpers API (simplifiés) ----------
-    def _ui_to_cui(self, ui: str) -> str | None:
-        if ui in CACHE:                 # (cui, codes) tuple
-            return CACHE[ui][0]
-        url = f"{BASE}/content/current/source/MSH/{ui}?apiKey={APIKEY}"
-        cx  = requests.get(url, timeout=TIMEOUT).json()
-        url2 = cx["result"]["concepts"] + f"&apiKey={APIKEY}"
-        res  = requests.get(url2, timeout=TIMEOUT).json()
-        lst  = res["result"]["results"]
-        return lst[0]["ui"] if lst else None
+        if not cache_path.is_file():
+            raise FileNotFoundError(
+                f"Fichier cache MeSH→ICD10 introuvable : {cache_path}"
+            )
 
-    def _cui_to_codes(self, cui: str) -> list[str]:
-        url = (f"{BASE}/content/2025AA/CUI/{cui}"
-               f"/atoms?sabs=ICD10CM&pageSize=200&apiKey={APIKEY}")
-        resp = requests.get(url, timeout=TIMEOUT)
+        cache: Dict[str, List[str]] = json.loads(cache_path.read_text())
+        # ex. {"D006973": ["I10"], …}
 
-        # 404, 401, ou JSON inattendu ⇒ aucune correspondance
-        if resp.status_code != 200:
-            return []
+        self._mesh2codes: dict[str, list[str]] = cache
+        # si vous avez aussi un mapping MeSH→CUI, chargez-le ici
+        self._mesh2cui: dict[str, str | None] = defaultdict(lambda: None)
 
-        data = resp.json()
-        atoms = data.get("result", [])
-        return sorted({
-            a["code"].split("/")[-1]
-            for a in atoms
-            if a.get("rootSource") == "ICD10CM"
-        })
-
-    # ---------- opération principale ----------
-    def run(self, segments: list[Segment]) -> None:
-        for seg in segments:
-            mesh_norm = [
-                n.kb_id for n in seg.attrs.get(label="NORMALIZATION")
-                if n.kb_name == "MeSH"
-            ]
-            if not mesh_norm:
-                continue
-            mesh_id = mesh_norm[0]
-
-            cui = self._ui_to_cui(mesh_id)
-            if not cui:
-                continue
-
-            for icd in self._cui_to_codes(cui):
-                seg.attrs.add(
-                    Attribute(
-                        label="ICD10CM",
-                        value=icd,
-                        metadata={
-                            "cui": cui,
-                            "mesh_id": mesh_id,
-                            "provenance": self._prov,
-                        },
-                    )
+    # ------------------------------------------------------------------ #
+    # 2) helper (MeSH ⇒ liste d’Attribute ICD10CM)                       #
+    # ------------------------------------------------------------------ #
+    def _build_attrs(self, mesh_id: str) -> list[Attribute]:
+        """Un attr `ICD10CM` par code lié au MeSH."""
+        attrs: list[Attribute] = []
+        cui = self._mesh2cui.get(mesh_id)          # None si non connu
+        for code in self._mesh2codes.get(mesh_id, []):
+            attrs.append(
+                Attribute(
+                    label="ICD10CM",
+                    value=code,
+                    metadata={
+                        "cui": cui,
+                        "mesh_id": mesh_id,
+                        # « provenance » ajouté plus tard
+                    },
                 )
-        # ---> aucune valeur de retour
+            )
+        return attrs
+    
+    # ------------------------------------------------------------------
+    # 2.1  helper public : liste → liste
+    # ------------------------------------------------------------------
+    def map_mesh_ids(self, mesh_ids: list[str]) -> list[Attribute]:
+        """
+        Convertit une liste de MeSH UI en une liste plate d’`Attribute`
+        ICD-10-CM (un attribut par code).  S’appuie sur _build_attrs().
+        """
+        attrs: list[Attribute] = []
+        for mid in mesh_ids:
+            attrs.extend(self._build_attrs(mid))
+        return attrs
+
+    # ------------------------------------------------------------------ #
+    # 3) run() — ajout in-place sur les segments                         #
+    # ------------------------------------------------------------------ #
+    def run(
+        self,
+        mesh_segments: list[Segment],            # segments issus du Simstring
+        pubmed_segments: list[Segment] | None = None  # segments ajoutés par PubMedMeshFetcher
+    ):
+        pubmed_segments = pubmed_segments or []      # peut être None si pas de step amont
+
+        # 1) – provenance des codes MeSH
+        prov_map: dict[str, set[str]] = {}
+        for seg in mesh_segments:
+            for norm in seg.attrs.get(label="NORMALIZATION"):
+                if norm.kb_name == "MeSH":
+                    prov_map.setdefault(norm.kb_id, set()).add("gliner")
+
+        for seg in pubmed_segments:
+            for norm in seg.attrs.get(label="NORMALIZATION"):
+                if norm.kb_name == "MeSH":
+                    prov_map.setdefault(norm.kb_id, set()).add("pubmed")
+
+        union_mesh = list(prov_map)
+
+        # 2) – mapping MeSH → ICD-10-CM
+        attrs = self.map_mesh_ids(union_mesh)
+
+        # 3) – enrichir les métadonnées + pousser sur tous les segments MeSH
+        trace = {}
+        for attr in attrs:
+            mid = attr.metadata["mesh_id"]
+            provenance = prov_map[mid]
+            attr.metadata["provenance"] = (
+                "both" if len(provenance) == 2 else next(iter(provenance))
+            )
+
+            trace.setdefault(attr.value, {
+                "cui":       attr.metadata["cui"],
+                "mesh_id":   mid,
+                "provenance": attr.metadata["provenance"],
+            })
+
+            # même attribut copié sur chaque segment MeSH normalisé
+            for seg in mesh_segments:
+                print("SEG MESH :", seg)
+                seg.attrs.add(attr.copy())
+
+            for seg in pubmed_segments:
+                print("SEG MESH :", seg)
+
+        
+        return []
