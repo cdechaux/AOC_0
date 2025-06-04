@@ -12,13 +12,11 @@ class GlinerDetector(Operation):
         )
         self.output_label = out_label
 
+    
+
     def run(self, segments):
         text = segments[0].text if segments else ""
         ents = self._model.predict_entities(text, self._labels)
-
-        # ─── DEBUG ──────────────────────────────────────────────
-        print(f"[GLiNER] {len(ents)} entités – 1re phrase : {text[:80]!r}")
-        # ─────────────────────────────────────────────────────────
 
         out = []
         for ent in ents:
