@@ -100,6 +100,7 @@ class ICD10Mapper(Operation):
                 if norm.kb_name == "MeSH":
                     prov_map.setdefault(norm.kb_id, set()).add("pubmed")
 
+        print(prov_map)
         union_mesh = list(prov_map)
 
         # 2) – mapping MeSH → ICD-10-CM
@@ -120,13 +121,12 @@ class ICD10Mapper(Operation):
                 "provenance": attr.metadata["provenance"],
             })
 
-            # même attribut copié sur chaque segment MeSH normalisé
-            for seg in mesh_segments:
-                print("SEG MESH :", seg)
-                seg.attrs.add(attr.copy())
-
-            for seg in pubmed_segments:
-                print("SEG MESH :", seg)
+            # ➜ ajouter l’attribut seulement sur les annotations portant CE MeSH
+            for ann in mesh_segments + pubmed_segments:        # union des deux listes
+                for norm in ann.attrs.get(label="NORMALIZATION"):
+                    if norm.kb_name == "MeSH" and norm.kb_id == mid:
+                        ann.attrs.add(attr.copy())
+                        break  
 
         
         return []
