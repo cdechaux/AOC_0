@@ -3,6 +3,7 @@ from __future__ import annotations
 import os, json, pathlib, requests
 from medkit.core.operation import DocOperation
 from medkit.core.attribute import Attribute
+from medkit.core.text import Segment
 from dotenv import load_dotenv
 
 BASE   = "https://uts-ws.nlm.nih.gov/rest"
@@ -21,9 +22,9 @@ class ICD10Mapper(DocOperation):
         • metadata: {cui, mesh_id, provenance}
     """
 
-    def __init__(self, label="ICD10CM"):
-        super().__init__(output_labels=[label])
-        self.label = label
+    def __init__(self, provenance="gliner"):
+        super().__init__()
+        self._prov = provenance          # 'gliner' ou 'pubmed'
 
     # ---------- helpers API (simplifiés) ----------
     def _ui_to_cui(self, ui: str) -> str | None:
@@ -54,28 +55,30 @@ class ICD10Mapper(DocOperation):
         })
 
     # ---------- opération principale ----------
-    def run(self, segments: list):
-        new_atts = []
+    def run(self, segments: list[Segment]) -> None:
         for seg in segments:
-            for norm in seg.attrs.get(label="NORMALIZATION"):
-                mesh_id = norm.kb_id
-                prov     = seg.metadata.get("source")  # 'gliner' ou 'pubmed'
-                if mesh_id in CACHE:
-                    cui, codes = CACHE[mesh_id]
-                else:
-                    cui   = self._ui_to_cui(mesh_id)
-                    codes = self._cui_to_codes(cui) if cui else []
-                    CACHE[mesh_id] = (cui, codes)
-                for code in codes:
-                    attr = Attribute(
-                        label=self.label,
-                        value=code,
+            mesh_norm = [
+                n.kb_id for n in seg.attrs.get(label="NORMALIZATION")
+                if n.kb_name == "MeSH"
+            ]
+            if not mesh_norm:
+                continue
+            mesh_id = mesh_norm[0]
+
+            cui = self._ui_to_cui(mesh_id)
+            if not cui:
+                continue
+
+            for icd in self._cui_to_codes(cui):
+                seg.attrs.add(
+                    Attribute(
+                        label="ICD10CM",
+                        value=icd,
                         metadata={
                             "cui": cui,
                             "mesh_id": mesh_id,
-                            "provenance": prov        # stocke la source
-                        }
+                            "provenance": self._prov,
+                        },
                     )
-                    seg.attrs.add(attr)
-                    new_atts.append(attr)
-        return segments #tout est deja collé au segment 
+                )
+        # ---> aucune valeur de retour

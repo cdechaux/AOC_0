@@ -30,9 +30,9 @@ def build(push: bool = True):
     def medkit_map(ex):
         # -------- document Medkit + exécution pipeline --------
         doc = TextDocument(text=ex["article_text"])
-        doc_pipe.run([doc])
-        print("input_keys :", doc_pipe.pipeline.input_keys)
-        print("output_keys :", doc_pipe.pipeline.output_keys)
+        d_out = doc_pipe.run([doc])
+        print("→ pipeline outputs :", d_out) # d_out["mesh_norm"] devrait contenir 12 segments
+        print("len(doc.anns) :", len(doc.anns))
         for step in doc_pipe.pipeline.steps:
             print(step.operation, "→", step.output_keys) 
         detected = []          # [{term,label,mesh_id}]

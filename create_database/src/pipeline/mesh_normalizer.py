@@ -34,7 +34,7 @@ class MeshNormalizer(Operation):
         (gliner_label) sur les nouveaux segments.
         """
         out = self._matcher.run(segments)           # nouveaux segments
-
+        print(f"[MeshNorm] segments ajoutés : {len(out)}")
         # copie tous les attributs du segment source vers sa sortie jumelle
         for src, dst in zip(segments, out):
             for attr in src.attrs:
