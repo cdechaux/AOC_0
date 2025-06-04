@@ -14,15 +14,19 @@ class GlinerDetector(Operation):
 
     def run(self, segments):
         text = segments[0].text if segments else ""
-        out  = []
-        for ent in self._model.predict_entities(text, self._labels):
+        ents = self._model.predict_entities(text, self._labels)
+
+        # ─── DEBUG ──────────────────────────────────────────────
+        print(f"[GLiNER] {len(ents)} entités – 1re phrase : {text[:80]!r}")
+        # ─────────────────────────────────────────────────────────
+
+        out = []
+        for ent in ents:
             seg = Segment(
-                label=self.output_label,            # "medical_entity"
+                label=self.output_label,
                 spans=[Span(ent["start"], ent["end"])],
                 text=text[ent["start"]:ent["end"]],
             )
-            # on mémorise le label ("disease", "symptom", …)
             seg.attrs.add(Attribute(label="gliner_label", value=ent["label"]))
-
             out.append(seg)
         return out

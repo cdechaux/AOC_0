@@ -26,17 +26,16 @@ def get_pipeline(device: str = "cpu") -> Pipeline:
                      output_keys=["mesh_norm"]),
 
         # 3) ajout d’attributs ICD-10-CM sur ces mêmes segments
-        #    – on RENVOIE à nouveau la même liste pour qu’elle reste vivante
         PipelineStep(icd,
                      input_keys=["mesh_norm"],
-                     output_keys=["mesh_norm"]),
+                     output_keys=[]),
     ]
 
     # 🔸  *** la clé importante ***
     return Pipeline(
         steps=steps,
         input_keys=["raw_segment"],
-        output_keys=["mesh_norm"],   # <- à attacher au document
+        output_keys=["mesh_norm"], 
         name="gliner_mesh_icd10",
     )
 
