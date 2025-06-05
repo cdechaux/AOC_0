@@ -111,7 +111,7 @@ class ICD10Mapper(Operation):
         if ui in self._mesh2codes:
             return self._mesh2codes[ui]
 
-        cui = self._mesh_ui_to_cui(ui)
+        cui = self._mesh_ui_to_cuis(ui)
 
         # 🔸  ENREGISTRER le CUI pour pouvoir le réutiliser plus tard
         self._mesh2cui[ui] = cui                       #  ←  ajoutez cette ligne

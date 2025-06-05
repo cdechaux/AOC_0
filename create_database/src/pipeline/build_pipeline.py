@@ -7,7 +7,7 @@ from .icd10_mapper      import ICD10Mapper
 from .pubmed_fetcher import PubMedMeshFetcher
 
 
-def get_pipeline(device: str = "cpu") -> Pipeline:
+def get_pipeline(device: str = "cuda") -> Pipeline:
     det  = GlinerDetector(
         labels=["disease", "condition", "symptom", "treatment"],
         device=device,
@@ -47,7 +47,7 @@ def get_pipeline(device: str = "cpu") -> Pipeline:
     )
 
 
-def get_doc_pipeline(device: str = "cpu") -> DocPipeline:
+def get_doc_pipeline(device: str = "cuda") -> DocPipeline:
     """
     Enveloppe le `Pipeline` ci-dessus dans un `DocPipeline` pratique :
     • on passe une liste de `TextDocument`;
