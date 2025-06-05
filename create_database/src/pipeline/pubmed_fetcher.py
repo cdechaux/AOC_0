@@ -6,7 +6,10 @@ from medkit.core.attribute import Attribute
 from medkit.core.text.entity_norm_attribute import EntityNormAttribute
 
 # le même cache global déjà utilisé ailleurs
-from create_database.src.pubmed.fetch_mesh import mapping as pmid2mesh  
+from create_database.src.pubmed.fetch_mesh import (
+    mapping as pmid2mesh,
+    fetch_batch,
+)
 
 
 class PubMedMeshFetcher(Operation):
@@ -29,8 +32,18 @@ class PubMedMeshFetcher(Operation):
         if not segments:
             return []
 
-        pmid = str(segments[0].metadata.get("pmid", ""))
-        mesh_ids = pmid2mesh.get(pmid, [])
+        pmid = str(segments[0].metadata.get("pmid", "")).strip()
+        if not pmid:
+            print("Pas de PMID")
+            return []
+        
+        # recup mesh : essaie dans le cache, sinon => appel réseau (et mise à jour automatique du cache)
+        mesh_ids = pmid2mesh.get(pmid)
+        if mesh_ids is None:
+            fetch_batch([pmid])          # <── ajoute au dict + cache disque
+            mesh_ids = pmid2mesh.get(pmid, [])
+
+
         out_segments: list[Segment] = []
         for mid in mesh_ids:
             seg = Segment(
