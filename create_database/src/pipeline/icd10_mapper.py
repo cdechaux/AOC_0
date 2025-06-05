@@ -99,8 +99,9 @@ class ICD10Mapper(Operation):
             for norm in seg.attrs.get(label="NORMALIZATION"):
                 if norm.kb_name == "MeSH":
                     prov_map.setdefault(norm.kb_id, set()).add("pubmed")
-
-        print(prov_map)
+        print("MESH ",mesh_segments)
+        print("PUBMED ",pubmed_segments)
+        print("PROV ",prov_map)
         union_mesh = list(prov_map)
 
         # 2) – mapping MeSH → ICD-10-CM

@@ -34,88 +34,84 @@ def build(push: bool = True):
     # mapping Medkit ➜ colonnes du dataset
     # ------------------------------------------------------------------ #
     def medkit_map(ex):
-        doc = TextDocument(text=ex["article_text"],
-                           metadata={"pmid": str(ex["article_id"])})
+        # 1) construire le document
+        doc = TextDocument(
+            text=ex["article_text"],
+            metadata={"pmid": str(ex["article_id"])}
+        )
         doc.raw_segment.metadata["pmid"] = str(ex["article_id"])
-        # -- run pipeline
+
+        # 2) exécuter le pipeline
         doc_pipe.run([doc])
 
-        # -------------- trace ICD10 ------------------------------------
-        trace: dict[str, dict] = {}
+        # ---------- ICD-10 trace (inchangé) ----------
+        trace = {}
         for seg in doc.anns:
             for icd_attr in seg.attrs.get(label="ICD10CM"):
                 code = icd_attr.value
-                meta = trace.setdefault(code, {
-                    "cui":        icd_attr.metadata["cui"],
-                    "mesh_id":    icd_attr.metadata["mesh_id"],
-                    "provenance": set(),
-                })
+                meta = trace.setdefault(
+                    code,
+                    {
+                        "cui":        icd_attr.metadata["cui"],
+                        "mesh_id":    icd_attr.metadata["mesh_id"],
+                        "provenance": set(),
+                    },
+                )
                 meta["provenance"].add(icd_attr.metadata["provenance"])
 
-        # convertir l’ensemble → chaîne
         for meta in trace.values():
             p = meta["provenance"]
             meta["provenance"] = "both" if len(p) == 2 else next(iter(p))
-
         ex["icd10_trace"] = json.dumps(trace, ensure_ascii=False)
 
-        # -------------- parcourir les segments -------------------------
-        mesh_codes = set()
-        icd_codes  = set()
-        detected   = []
+        # ---------- parcourir les segments ----------
+        gliner_mesh   = set()
+        pubmed_mesh   = set()
+        icd_codes     = set()
+        detected      = []
 
         for seg in doc.anns:
             if seg.label != "medical_entity":
                 continue
 
-            # GLiNER label
-            gl_label_attr = seg.attrs.get(label="gliner_label")
-            gl_label = gl_label_attr[0].value if gl_label_attr else None
+            if "mesh_norm" in seg.keys:       # ⇦ segments GLiNER uniquement
+                # -- GLiNER label
+                gl_label_attr = seg.attrs.get(label="gliner_label")
+                gl_label = gl_label_attr[0].value if gl_label_attr else None
 
-            # codes MeSH (0..n)
-            mesh_ids = [n.kb_id for n in seg.attrs.get(label="NORMALIZATION")
-                        if n.kb_name == "MeSH"]
-            mesh_id  = mesh_ids[0] if mesh_ids else None
+                # -- MeSH
+                mesh_ids = [n.kb_id for n in seg.attrs.get(label="NORMALIZATION")
+                            if n.kb_name == "MeSH"]
+                mesh_id  = mesh_ids[0] if mesh_ids else None
 
-            detected.append(
-                {"term": seg.text, "label": gl_label, "mesh_id": mesh_id}
-            )
-            if mesh_id:
-                mesh_codes.add(mesh_id)
+                detected.append(
+                    {"term": seg.text, "label": gl_label, "mesh_id": mesh_id}
+                )
+                if mesh_id:
+                    gliner_mesh.add(mesh_id)
 
-            # codes ICD-10 CM (ajoutés par ICD10Mapper)
+            elif "pubmed_mesh" in seg.keys:
+                # MeSH provenant de PubMed (pas ajouté à detected_entities)
+                for norm in seg.attrs.get(label="NORMALIZATION"):
+                    if norm.kb_name == "MeSH":
+                        pubmed_mesh.add(norm.kb_id)
+
+            # -- ICD-10
             for icd_attr in seg.attrs.get(label="ICD10CM"):
                 icd_codes.add(icd_attr.value)
 
+        # ---------- colonnes dataset ----------
         ex["detected_entities"] = detected
-        ex["mesh_from_gliner"]  = sorted(mesh_codes)
+        ex["mesh_from_gliner"]  = sorted(gliner_mesh)
+        ex["pubmed_mesh"]       = sorted(pubmed_mesh)
+        ex["union_mesh"]        = sorted(gliner_mesh | pubmed_mesh)
+        ex["inter_mesh"]        = sorted(gliner_mesh & pubmed_mesh)
         ex["icd10_codes"]       = sorted(icd_codes)
         return ex
 
     ds = ds.map(medkit_map, desc="pipeline medkit")
 
-    # ------------------------------------------------------------------ #
-    # 3. Récupération des MeSH PubMed  +  union / inter                  #
-    # ------------------------------------------------------------------ #
-    pmids = [str(p) for p in ds["article_id"] if p]
-    for chunk in [pmids[i:i + 100] for i in range(0, len(pmids), 100)]:
-        fetch_batch(chunk)                       # remplit le cache global
 
-    # 3-a  ajouter la colonne « pubmed_mesh »
-    ds = ds.map(lambda e: {
-        **e, "pubmed_mesh": pmid2mesh.get(str(e["article_id"]), [])
-    })
-
-    # 3-b  calculer union / intersection
-    def add_union_inter(example):
-        m_gliner = set(example["mesh_from_gliner"])
-        m_pubmed = set(example["pubmed_mesh"])
-
-        example["union_codes_mesh"] = sorted(m_gliner | m_pubmed)
-        example["inter_codes_mesh"] = sorted(m_gliner & m_pubmed)
-        return example
-
-    ds = ds.map(add_union_inter, desc="union / intersection MeSH")
 
     # ------------------------------------------------------------------ #
     # 4. Schéma + push                                                   #
@@ -124,9 +120,10 @@ def build(push: bool = True):
         **ds.features,
         "mesh_from_gliner":  Sequence(Value("string")),
         "pubmed_mesh":       Sequence(Value("string")),
-        "union_codes_mesh":  Sequence(Value("string")),
-        "inter_codes_mesh":  Sequence(Value("string")),
+        "union_mesh":  Sequence(Value("string")),
+        "inter_mesh":  Sequence(Value("string")),
         "icd10_codes":       Sequence(Value("string")),
+        "icd10_trace":     Value("string"),
     }))
 
     if push:
