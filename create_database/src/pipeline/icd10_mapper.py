@@ -104,37 +104,49 @@ class ICD10Mapper(Operation):
     # ------------------------------------------------------------------ #
     # 3. résolution MeSH ➜ (cuis, icd10)  + mise à jour du cache         #
     # ------------------------------------------------------------------ #
-    def _resolve_mesh(self, ui: str) -> list[str]:
-        """Retourne (et met en cache) la liste des codes ICD-10-CM d’un UI MeSH,
-        en mémorisant aussi le CUI correspondant.
+    def _resolve_mesh(self, ui: str) -> list[tuple[str, str | None]]:
+        """
+        Retourne une liste de tuples (code_icd10, cui_source).
+        Met à jour le cache :
+            {ui: {"cuis": [...], "icd10": [{"code": ..., "cui": ...}, ...]}}
         """
         if ui in self._mesh2codes:
+            # valeur déjà au bon format [(code, cui), ...]
             return self._mesh2codes[ui]
 
-        cui = self._mesh_ui_to_cuis(ui)
+        cuis = self._mesh_ui_to_cuis(ui)            # ex. ['C12345', 'C67890']
+        pairs: list[tuple[str, str | None]] = []
 
-        # 🔸  ENREGISTRER le CUI pour pouvoir le réutiliser plus tard
-        self._mesh2cui[ui] = cui                       #  ←  ajoutez cette ligne
+        for cui in cuis:
+            for code in self._cui_to_icd10cm(cui):
+                pairs.append((code, cui))
 
-        codes = self._cui_to_icd10cm(cui) if cui else []
+        # dé-duplication éventuelle (on garde le 1er CUI rencontré)
+        seen: dict[str, str | None] = {}
+        for code, cui in pairs:
+            seen.setdefault(code, cui)
 
-        # mise à jour du cache codes + sauvegarde disque
-        self._mesh2codes[ui] = codes
-        try:
-            self._cache_path.write_text(
-                json.dumps(self._mesh2codes, indent=2), encoding="utf-8"
-            )
-        except OSError:
-            pass
-        return codes
+        result = sorted(seen.items())               # [(code, cui), ...]
+        self._mesh2codes[ui] = result
+        self._mesh2cui[ui]   = result[0][1] if result else None   # « principal »
+
+        # ► sauvegarde brute
+        self._raw_cache[ui] = {
+            "cuis": cuis,
+            "icd10": [{"code": c, "cui": cu} for c, cu in result],
+        }
+        self._cache_path.write_text(json.dumps(self._raw_cache, indent=2),
+                                    encoding="utf-8")
+
+        return result
+
 
     # ------------------------------------------------------------------ #
     # 4. helpers attributs                                               #
     # ------------------------------------------------------------------ #
     def _build_attrs(self, mesh_id: str) -> list[Attribute]:
         attrs: list[Attribute] = []
-        cui = self._mesh2cui.get(mesh_id)
-        for code in self._resolve_mesh(mesh_id):
+        for code, cui in self._resolve_mesh(mesh_id):
             attrs.append(
                 Attribute(
                     label="ICD10CM",
