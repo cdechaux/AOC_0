@@ -54,12 +54,15 @@ class ICD10Mapper(Operation):
             self._cache_path.parent.mkdir(parents=True, exist_ok=True)
 
         # deux vues pratiques ⬇
-        self._mesh2codes: Dict[str, List[str]] = {
-            ui: entry.get("icd10", [])
+        # vue “codes” : list[(code, cui)]
+        self._mesh2codes: Dict[str, List[tuple[str, str | None]]] = {
+            ui: [(d["code"], d.get("cui")) for d in entry.get("icd10", [])]
             for ui, entry in raw_cache.items()
         }
+
+        # vue “cui principal”
         self._mesh2cui: Dict[str, str | None] = {
-            ui: (entry["cuis"][0] if entry.get("cuis") else None)
+            ui: (entry["icd10"][0]["cui"] if entry.get("icd10") else None)
             for ui, entry in raw_cache.items()
         }
 
