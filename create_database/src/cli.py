@@ -2,6 +2,7 @@
 # ──────────────────────────────────────────────────────────────
 # src/cli.py   –   build + push du jeu de données enrichi
 # ──────────────────────────────────────────────────────────────
+import argparse
 import os
 import json
 import typer
@@ -19,16 +20,23 @@ from create_database.src.pubmed.fetch_mesh import fetch_batch
 # ──────────────────────────────────────────────────────────────
 # build()
 # ──────────────────────────────────────────────────────────────
-def build(push: bool = True):
+def build(
+    push: bool = True,
+    hf_token: str = typer.Option(None, help="HuggingFace API token"),
+    umls_api_key: str = typer.Option(None, help="UMLS API key"),
+    dataset_name_initial: str = typer.Option(None, help="Nom du dataset Hugging Face initial"),
+    dataset_name: str = typer.Option(None, help="Nom du dataset Hugging Face final ([Nom du compte HF]/[Nom du dataset])"),
+):
     load_dotenv()
-    ds = load_dataset("rntc/edu3-clinical-fr", split="train")
+
+    ds = load_dataset(dataset_name_initial, split="train")
     ds = ds.filter(lambda x: x["document_type"] == "Clinical case")
 
     if os.getenv("DEBUG10"):
         ds = ds.select(range(5))
         print("DEBUG : 5 documents seulement")
 
-    doc_pipe = get_doc_pipeline(device="cuda")   # ← le pipeline ci-dessus
+    doc_pipe = get_doc_pipeline(umls_api_key=umls_api_key,device="cuda")   # ← le pipeline ci-dessus
 
     # ------------------------------------------------------------------ #
     # mapping Medkit ➜ colonnes du dataset
@@ -127,9 +135,9 @@ def build(push: bool = True):
     }))
 
     if push:
-        api = HfApi(token=os.getenv("HF_TOKEN"))
+        api = HfApi(token=hf_token)
         ds.push_to_hub(
-            "clairedhx/edu3-clinical-fr-mesh-5",
+            dataset_name,
             commit_message="GLiNER + MeSH + ICD-10-CM + trace",
             private=False,
         )

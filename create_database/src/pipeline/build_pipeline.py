@@ -7,14 +7,14 @@ from .icd10_mapper      import ICD10Mapper
 from .pubmed_fetcher import PubMedMeshFetcher
 
 
-def get_pipeline(device: str = "cuda") -> Pipeline:
+def get_pipeline(umls_api_key : str,device: str = "cuda") -> Pipeline:
     det  = GlinerDetector(
         labels=["disease", "condition", "symptom", "treatment"],
         device=device,
     )
     norm = MeshNormalizer(load_simstring_matcher())
     fetch = PubMedMeshFetcher() 
-    icd  = ICD10Mapper()            # modifie les mêmes segments in-place
+    icd  = ICD10Mapper(api_key=umls_api_key)            # modifie les mêmes segments in-place
 
     steps = [
         # 1) repérage d’entités gliner
@@ -47,11 +47,11 @@ def get_pipeline(device: str = "cuda") -> Pipeline:
     )
 
 
-def get_doc_pipeline(device: str = "cuda") -> DocPipeline:
+def get_doc_pipeline(umls_api_key: str, device: str = "cuda") -> DocPipeline:
     """
     Enveloppe le `Pipeline` ci-dessus dans un `DocPipeline` pratique :
     • on passe une liste de `TextDocument`;
     • les annotations créées sont ré-injectées dans chaque doc.
     """
-    base_pipe = get_pipeline(device)
+    base_pipe = get_pipeline(umls_api_key, device)
     return DocPipeline(pipeline=base_pipe)   # pas de labels_by_input_key -> segments RAW
