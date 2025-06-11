@@ -91,14 +91,17 @@ python -m create_database.src.cli \
 
 ```mermaid
 graph TD;
+    Z["Dataset initial"]-->A;
     A["Texte (cas clinique)"] --> B["Extraction des entités (GLiNER Biomed)"];
-    B --> C["Matching flou (SimString sur MeSH FR)"];
-    C --> D["ID MeSH (ex. D006973)"];
+    B --> C["SimString Matcher sur labels des codes MeSH"];
+    C --> D["Union des codes MeSH (ex. D006973)"];
     D --> E["Mapping MeSH → CUI (via UMLS)"];
-    D --> H["Complément MeSH depuis PubMed (ID article)"];
     E --> F["Mapping CUI → ICD-10"];
-    H --> F;
-    F --> G["Code CIM-10 final"];
+    F --> G["Codes CIM-10 finaux"];
+    Z --> Y["PMID (id Pubmed)"];
+    Y --> X["eUtils NCBI NIH"];
+    X --> W["Récupération des codes MeSH associés"];
+    W --> D;
 ```
 
 ## Dataset de sortie
