@@ -126,7 +126,7 @@ Le dataset final contient notamment les colonnes suivantes :
     "provenance": "gliner"
   },
   "A18.01": {
-    "cui": null,
+    "cui": "C0015967",
     "mesh_id": "D014394",
     "provenance": "pubmed"
   },
