@@ -1,4 +1,9 @@
-# AOC_0
+# AOC_0 - Pipeline d’enrichissement clinique MeSH / CIM-10
+
+Pipeline complet d’enrichissement de cas cliniques francophones avec des entités médicales MeSH et des codes CIM-10, à l’aide de modèles biomédicaux et de sources comme UMLS et PubMed.
+
+## Arborescence 
+
 ```text
 ├── create_database
 │   ├── data
@@ -46,17 +51,97 @@
 ```
 
 
+
+
+## Installation
+
+### 1. Créer un environnement virtuel
+
+```bash
 python3 -m venv aoc-env
 source aoc-env/bin/activate
+```
 
-# ré-installer les dépendances
+### 2. Installer les dépendances
+
+```bash
 pip install -r requirements.txt
+```
 
-python -m create_database.src.cli
+## Exécution du pipeline
 
+Le pipeline s’exécute via le script `cli.py`. Il peut être lancé avec les paramètres suivants :
 
+```bash
 python -m create_database.src.cli \
   --hf-token "hf_xxx" \
   --umls-api-key "abc123" \
-  --dataset-name-initial "rntc/edu3-clinical-fr"\
+  --dataset-name-initial "rntc/edu3-clinical-fr" \
   --dataset-name "clairedhx/edu3-clinical-fr-mesh-5"
+```
+
+### Arguments disponibles
+
+* `--hf-token`: jeton Hugging Face pour pousser le dataset.
+* `--umls-api-key`: clé API UMLS (disponible via UTS \[NLM]).
+* `--dataset-name-initial`: nom du dataset source.
+* `--dataset-name`: nom du dataset enrichi à créer/publier.
+
+## Étapes du pipeline
+
+```mermaid
+graph TD;
+    A["Texte (cas clinique)"] --> B["Extraction des entités (GLiNER Biomed)"];
+    B --> C["Matching flou (SimString sur MeSH FR)"];
+    C --> D["ID MeSH (ex. D006973)"];
+    D --> E["Mapping MeSH → CUI (via UMLS)"];
+    D --> H["Complément MeSH depuis PubMed (ID article)"];
+    E --> F["Mapping CUI → ICD-10"];
+    H --> F;
+    F --> G["Code CIM-10 final"];
+```
+
+## Dataset de sortie
+
+Le dataset final contient notamment les colonnes suivantes :
+
+* `detected_entities` : entités détectées par GLiNER + leur MeSH
+* `mesh_from_gliner` : MeSH issus de la normalisation
+* `pubmed_mesh` : MeSH récupérés via PubMed (API efetch)
+* `union_mesh` : union des deux sources MeSH
+* `inter_mesh` : intersection des deux sources
+* `icd10_codes` : liste des codes CIM-10 associés
+* `icd10_trace` : structure JSON retraçant le mapping (MeSH → CUI → ICD-10)
+
+### Exemple de `icd10_trace`
+
+```json
+{
+  "M54": {
+    "cui": "C0004604",
+    "mesh_id": "D001416",
+    "provenance": "gliner"
+  },
+  "A18.01": {
+    "cui": null,
+    "mesh_id": "D014394",
+    "provenance": "pubmed"
+  },
+  "C00.1": {
+    "cui": "C0206646",
+    "mesh_id": "D002289",
+    "provenance": "both"
+  }
+}
+```
+
+## Sources & Crédits
+
+* 🧾 **Dictionnaire MeSH FR** (INSERM, format `.xml`, https://mesh.inserm.fr/FrenchMesh/index.htm)
+* 🧠 **UMLS** via [U.S. National Library of Medicine](https://uts.nlm.nih.gov/)
+* 🤖 **GLiNER-Biomed** : modèle de détection d’entités biomédicales (Hugging Face) -> Ihor/gliner-biomed-large-v1.0
+* 📘 **Corpus** initial : `rntc/edu3-clinical-fr` (Paragraphes articles français PubMed via LLM)
+
+---
+
+
