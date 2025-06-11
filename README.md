@@ -45,4 +45,18 @@
 └── requirements.txt
 ```
 
+
+python3 -m venv aoc-env
+source aoc-env/bin/activate
+
+# ré-installer les dépendances
+pip install -r requirements.txt
+
 python -m create_database.src.cli
+
+
+python -m create_database.src.cli \
+  --hf-token "hf_xxx" \
+  --umls-api-key "abc123" \
+  --dataset-name-initial "rntc/edu3-clinical-fr"\
+  --dataset-name "clairedhx/edu3-clinical-fr-mesh-5"
