@@ -107,6 +107,8 @@ def build(
             # -- ICD-10
             for icd_attr in seg.attrs.get(label="ICD10CM"):
                 icd_codes.add(icd_attr.value)
+        # ---------- version réduite des codes CIM-10 ----------
+        codes_reduct = {code.split(".")[0] for code in icd_codes}
 
         # ---------- colonnes dataset ----------
         ex["detected_entities"] = detected
@@ -115,6 +117,7 @@ def build(
         ex["union_mesh"]        = sorted(gliner_mesh | pubmed_mesh)
         ex["inter_mesh"]        = sorted(gliner_mesh & pubmed_mesh)
         ex["icd10_codes"]       = sorted(icd_codes)
+        ex["icd10_codes_reduct"] = sorted(codes_reduct)
         return ex
 
     ds = ds.map(medkit_map, desc="pipeline medkit")
@@ -131,6 +134,7 @@ def build(
         "union_mesh":  Sequence(Value("string")),
         "inter_mesh":  Sequence(Value("string")),
         "icd10_codes":       Sequence(Value("string")),
+        "icd10_codes_reduct": Sequence(Value("string")),
         "icd10_trace":     Value("string"),
     }))
 
