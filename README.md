@@ -115,6 +115,7 @@ Le dataset final contient notamment les colonnes suivantes :
 * `inter_mesh` : intersection des deux sources
 * `icd10_codes` : liste des codes CIM-10 associés
 * `icd10_trace` : structure JSON retraçant le mapping (MeSH → CUI → ICD-10)
+* `icd10_codes_reduct` : liste des codes ICD‑10‑CM réduits (supression des valeurs après le point et dédoublonnage)                                                         
 
 ### Exemple de `icd10_trace`
 
