@@ -1,0 +1,6 @@
+# Index FAISS
+*.index
+
+# ignorer tout dossier ou fichier nommé “env”
+aoc-env/
+*.env
