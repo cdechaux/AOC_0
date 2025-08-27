@@ -4,7 +4,7 @@ from tqdm import tqdm
 # Étape 1 : Chargement des datasets
 print("🔄 Chargement des jeux de données...")
 pubmed_big_all = load_dataset("rntc/pubmed-comm", split="train", streaming=True)
-pubmed_big = [row for row in pubmed_big_all if row["document_type"] == "Clinical Case"]
+pubmed_big = [row for row in pubmed_big_all if row["document_type"] == "Clinical case"]
 ds = Dataset.from_list(pubmed_big)
 ds.push_to_hub("clairedhx/pubmed-comm-clinical-cases")
 
